@@ -39,17 +39,19 @@ The simulator is designed with high academic rigor and viva explainability, prio
 ## 4. Completed Modules
 - [x] **Phase 1: Project Planning & Requirements Analysis** (Approved)
 - [x] **Phase 2: Project Foundation, Git Setup & Tracking Documentation** (Vite + React + Vitest initialized, `.gitignore` created, test runner operational)
+- [x] **Phase 3: Discrete-Event Simulation Engine Core** (`EventQueue.js`, `SimulationEngine.js`, `Channel.js`, and comprehensive unit tests in `src/tests/engine.test.js` passing)
 
 ---
 
 ## 5. Known Issues
-- None currently. Foundation setup completed cleanly with zero dependency vulnerabilities or test failures.
+- None. Discrete-event scheduling, virtual clock progression, event cancellation, and deterministic channel fault injection pass all unit tests without wall-clock dependencies.
 
 ---
 
 ## 6. Exact Next Step
-- **Phase 3: Discrete-Event Simulation Engine Core**
-  - Implement `SimulationEngine.js` (virtual clock, step, play, pause, reset).
-  - Implement `EventQueue.js` (priority event queue sorted by execution tick).
-  - Implement `Channel.js` (configurable latency, packet drop, corruption, and delay hooks).
-  - Write Vitest unit tests for event scheduling and timer cancellation before UI wiring.
+- **Phase 4: Framing Algorithms & UI Visualizer**
+  - Implement `src/core/framing/bitStuffing.js` (Flag `01111110`, zero-insertion after five consecutive `1`s, destuffing recovery).
+  - Implement `src/core/framing/byteStuffing.js` (Byte/character stuffing with `FLAG` and `ESC` escape characters).
+  - Implement `src/core/framing/charCount.js` (Character-count length framing + framing error desynchronization scenario).
+  - Create `src/tests/framing.test.js` with comprehensive edge cases (consecutive flags, payload flag collision, escape escaping escape).
+  - Build interactive `FramingView.jsx` with bit-by-bit visual inspector.

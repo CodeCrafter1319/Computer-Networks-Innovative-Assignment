@@ -1,9 +1,9 @@
 # TASKS.md — Project Task Tracker
 
 ## 1. Current Status Overview
-- **Active Phase:** Phase 2 Complete (Awaiting User Sign-off to advance to Phase 3)
-- **Current Task:** Verification of Foundation, Test Runner & Tracking Documents
-- **Next Task:** Phase 3 — Discrete-Event Simulation Engine Core
+- **Active Phase:** Phase 3 Complete (Awaiting User Sign-off to advance to Phase 4)
+- **Current Task:** Verification of Discrete-Event Simulation Engine Core & Deterministic Channel
+- **Next Task:** Phase 4 — Framing Algorithms & UI Visualizer
 
 ---
 
@@ -18,16 +18,14 @@
 - [x] **Task 2.5:** Establish clean UI entry point (`index.html`, `src/main.jsx`, `src/ui/App.jsx`, `src/styles/index.css`).
 - [x] **Task 2.6:** Set up initial Vitest test suite (`src/tests/sanity.test.js`) and verify test pipeline.
 - [x] **Task 2.7:** Initialize living documentation (`docs/PROJECT_CONTEXT.md`, `docs/TASKS.md`, `docs/TESTING.md`).
+- [x] **Task 3.1:** Implement `src/core/engine/EventQueue.js` (tick-ordered min-priority queue with binary-search insertion).
+- [x] **Task 3.2:** Implement `src/core/engine/SimulationEngine.js` (virtual clock, tick stepping, scheduling, timer cancellation, pause/resume/reset).
+- [x] **Task 3.3:** Implement `src/core/engine/Channel.js` (non-mutating frame transmission, propagation delay, fault injection: drop, corrupt, delay).
+- [x] **Task 3.4:** Write Vitest unit tests in `src/tests/engine.test.js` (22 tests covering ordering, timer cancel, step execution, immutability, and faults).
 
 ---
 
 ## 3. Pending Tasks (Roadmap)
-
-### Phase 3: Discrete-Event Simulation Engine Core
-- [ ] **Task 3.1:** Implement `src/core/engine/EventQueue.js` (tick-ordered min-priority queue).
-- [ ] **Task 3.2:** Implement `src/core/engine/SimulationEngine.js` (virtual clock, tick stepping, scheduling, timer cancellation).
-- [ ] **Task 3.3:** Implement `src/core/engine/Channel.js` (propagation delay, fault injection: drop, corrupt, delay).
-- [ ] **Task 3.4:** Write Vitest unit tests for engine scheduling, cancellation, and channel fault injection.
 
 ### Phase 4: Framing Implementation & Visualizer
 - [ ] **Task 4.1:** Implement pure Bit Stuffing and Destuffing algorithms (`01111110` flag, zero-insertion after five `1`s).
