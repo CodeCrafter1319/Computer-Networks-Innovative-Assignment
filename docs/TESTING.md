@@ -82,8 +82,12 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/framing.test.js` | Generic Educational Escape mode | `0x7E -> [0x7D, 0x7E]` and `0x7D -> [0x7D, 0x7D]` verified | Pass | **PASS** |
 | `src/tests/framing.test.js` | RFC 1662 round-trip byte preservation | Raw byte arrays restored identically after unstuffing | Pass | **PASS** |
 | `src/tests/framing.test.js` | UTF-8 multi-byte emoji/symbol text | Unicode strings with emojis recovered without loss | Pass | **PASS** |
-| `src/tests/framing.test.js` | Dangling ESC error detection | Trailing `0x7D` before closing flag caught as error | Pass | **PASS** |
-| `src/tests/framing.test.js` | Invalid RFC 1662 escape octet | `0x7D` followed by invalid octet rejected safely | Pass | **PASS** |
+| `src/tests/framing.test.js` | Dangling ESC immediately before closing FLAG | `[0x7D, 0x7E]` caught as RFC 1662 abort sequence / dangling ESC | Pass | **PASS** |
+| `src/tests/framing.test.js` | RFC 1662 transparent XOR 0x20 decoding | `[0x7D, 0x41]` decodes cleanly to `0x61` ('a') via `0x41 ^ 0x20` | Pass | **PASS** |
+| `src/tests/framing.test.js` | RFC 1662 payload abort sequence | `[0x7D, 0x7E]` inside payload aborts the frame per RFC 1662 Sec 4.2 | Pass | **PASS** |
+| `src/tests/framing.test.js` | Strict minimum escape policy | With `strictMinimumEscapes: true`, octets other than 0x5E/0x5D rejected | Pass | **PASS** |
+| `src/tests/framing.test.js` | Generic mode invalid escape rejection | Generic mode rejects ESC followed by non-reserved byte | Pass | **PASS** |
+| `src/tests/framing.test.js` | Dangling ESC in un-flagged stream | Trailing `0x7D` without following byte caught as error | Pass | **PASS** |
 | `src/tests/framing.test.js` | Unescaped internal FLAG detection | Raw `0x7E` inside payload flagged as framing violation | Pass | **PASS** |
 | `src/tests/framing.test.js` | Character-count single frame | Length header equals total frame size (header + payload) | Pass | **PASS** |
 | `src/tests/framing.test.js` | Multi-frame stream parsing | Concatenated frames parsed correctly into individual payloads | Pass | **PASS** |
@@ -92,7 +96,7 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/framing.test.js` | Invalid length header (< 1) | Zero or negative length header rejected safely | Pass | **PASS** |
 | `src/tests/framing.test.js` | Length header corruption desynchronization | Single corrupted length byte causes cascading framing failure | Pass | **PASS** |
 
-**Summary:** 3 files, 54 tests passed, 0 failed.
+**Summary:** 3 files, 58 tests passed, 0 failed.
 
 ---
 

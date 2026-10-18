@@ -27,7 +27,7 @@
 - [x] **Task 4.3:** Implement Character-Count framing with total length header, multi-frame streaming, and desynchronization simulation.
 - [x] **Task 4.4:** Write Vitest unit tests in `src/tests/framing.test.js` (30 tests covering boundary conditions, raw flag payloads, RFC 1662 escaping, and error states).
 - [x] **Task 4.5:** Build interactive `FramingView.jsx` with pipeline visualization, live bit/byte rendering, presets, error injection, convention toggle, and Viva Helper panel.
-- [x] **Task 4.6:** Technical audit verification of byte stuffing standards (RFC 1662) and raw flag collision protection.
+- [x] **Task 4.6:** Technical audit verification of byte stuffing standards (RFC 1662 Sec 4.2 transparent $0\text{x}20$ decoding, abort sequences `0x7D 0x7E`, strict minimum escape option, and raw flag collision protection; 34 framing tests passing).
 
 ---
 

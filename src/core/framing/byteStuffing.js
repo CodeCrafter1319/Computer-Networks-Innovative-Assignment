@@ -3,18 +3,31 @@
  * 
  * Byte / Octet Stuffing Implementation
  * 
+ * Educational Scope Disclaimer:
+ * This module implements Layer-2 byte-stuffing framing transparency algorithms.
+ * It is NOT a full PPP implementation: Link Control Protocol (LCP) negotiation,
+ * Async-Control-Character-Map (ACCM) negotiation, HDLC Address/Control fields,
+ * and Frame Check Sequence (FCS-16/32) CRC checks are outside the scope of
+ * this framing transparency sub-module.
+ * 
  * Supported Conventions:
- * 1. RFC 1662 PPP Octet Stuffing (Standard):
+ * 1. RFC 1662 Section 4.2 PPP Octet Stuffing (Standard):
  *    - FLAG Byte:   0x7E (126 in decimal, '~' in ASCII, binary 01111110)
  *    - ESC Byte:    0x7D (125 in decimal, '}' in ASCII, binary 01111101)
- *    - Inversion mask (XOR): 0x20 (32 in decimal, binary 00100000, inverts bit 5/6)
- *    - When 0x7E occurs in payload -> escaped as [0x7D, 0x5E] (0x7E ^ 0x20 = 0x5E, '~' -> '^')
- *    - When 0x7D occurs in payload -> escaped as [0x7D, 0x5D] (0x7D ^ 0x20 = 0x5D, '}' -> ']')
- *    - Receiver reverses transformation by XORing the octet following 0x7D with 0x20.
+ *    - Inversion mask (XOR): 0x20 (32 in decimal, binary 00100000, inverts bit 5)
+ *    - Transmitter:
+ *      * 0x7E in payload -> escaped as [0x7D, 0x5E] (0x7E ^ 0x20 = 0x5E)
+ *      * 0x7D in payload -> escaped as [0x7D, 0x5D] (0x7D ^ 0x20 = 0x5D)
+ *    - Receiver:
+ *      * When 0x7D is received, it examines the following octet.
+ *      * If the following octet is 0x7E, the frame is aborted (RFC 1662 Sec 4.2).
+ *      * Otherwise, the receiver discards 0x7D and inverts bit 5 (nextOctet ^ 0x20).
+ *      * Example: [0x7D, 0x41] decodes to 0x41 ^ 0x20 = 0x61 ('a').
  * 
  * 2. Generic Educational Character Stuffing (Tanenbaum):
  *    - Reserved FLAG byte (0x7E) is preceded by ESC (0x7D): [0x7E] -> [0x7D, 0x7E]
  *    - Reserved ESC byte (0x7D) is preceded by ESC (0x7D):  [0x7D] -> [0x7D, 0x7D]
+ *    - Strict validation: only 0x7E and 0x7D may follow ESC.
  */
 
 export const BYTE_FLAG = 0x7e; // 126, 01111110
@@ -196,6 +209,7 @@ export function stuffBytes(payloadBytes, options = {}) {
  * @param {boolean} [hasFlags=true] - Whether the input contains leading/trailing FLAG bytes.
  * @param {Object} [options={}]
  * @param {string} [options.mode=ByteStuffingMode.RFC1662_PPP] - RFC1662_PPP or GENERIC_ESCAPE.
+ * @param {boolean} [options.strictMinimumEscapes=false] - Optional strict check requiring escaped octets to only be 0x5E or 0x5D.
  * @returns {Object} {
  *   destuffedBytes: Uint8Array,
  *   removedEscapeCount: number,
@@ -207,6 +221,7 @@ export function stuffBytes(payloadBytes, options = {}) {
  */
 export function unstuffBytes(receivedBytes, hasFlags = true, options = {}) {
   const mode = options.mode || ByteStuffingMode.RFC1662_PPP;
+  const strictMinimumEscapes = options.strictMinimumEscapes || false;
   const input = receivedBytes instanceof Uint8Array ? receivedBytes : new Uint8Array(receivedBytes);
 
   let bytesToProcess = input;
@@ -255,39 +270,59 @@ export function unstuffBytes(receivedBytes, hasFlags = true, options = {}) {
           mode,
           trace,
           hasError: true,
-          errorMessage: `Dangling ESC byte (${byteToHex(BYTE_ESC)}) at index ${i} with no escaped byte following.`,
+          errorMessage: hasFlags
+            ? `Frame aborted: Dangling ESC byte (${byteToHex(BYTE_ESC)}) immediately precedes closing FLAG (${byteToHex(BYTE_FLAG)}) (RFC 1662 abort sequence).`
+            : `Dangling ESC byte (${byteToHex(BYTE_ESC)}) at end of payload with no escaped byte following.`,
         };
       }
 
       const nextByte = bytesToProcess[i + 1];
 
       if (mode === ByteStuffingMode.RFC1662_PPP) {
-        // RFC 1662 validation: next byte must be 0x5E (for flag) or 0x5D (for esc)
-        if (nextByte !== PPP_ESCAPED_FLAG && nextByte !== PPP_ESCAPED_ESC) {
+        // RFC 1662 Section 4.2 Rule:
+        // "If 0x7E is preceded by 0x7D, the 0x7E is invalid and the frame is aborted."
+        if (nextByte === BYTE_FLAG) {
           return {
             destuffedBytes: new Uint8Array(destuffed),
             removedEscapeCount,
             mode,
             trace,
             hasError: true,
-            errorMessage: `Invalid RFC 1662 escape sequence: ESC (${byteToHex(BYTE_ESC)}) followed by unexpected octet ${byteToHex(nextByte)} at index ${i + 1}. Expected 0x5E or 0x5D.`,
+            errorMessage: `Frame aborted: RFC 1662 escape octet (${byteToHex(BYTE_ESC)}) immediately followed by FLAG (${byteToHex(BYTE_FLAG)}) at index ${i + 1}.`,
           };
         }
 
-        // Unstuff: invert 5th bit (XOR with 0x20)
+        // Optional application policy check (disabled by default per RFC 1662)
+        if (strictMinimumEscapes && nextByte !== PPP_ESCAPED_FLAG && nextByte !== PPP_ESCAPED_ESC) {
+          return {
+            destuffedBytes: new Uint8Array(destuffed),
+            removedEscapeCount,
+            mode,
+            trace,
+            hasError: true,
+            errorMessage: `Strict escape violation: octet ${byteToHex(nextByte)} is not one of the minimum escaped bytes (0x5E, 0x5D).`,
+          };
+        }
+
+        // Standard RFC 1662 decoding: discard 0x7D and XOR following octet with 0x20
         const recoveredByte = nextByte ^ ESC_XOR;
         destuffed.push(recoveredByte);
         removedEscapeCount++;
+
+        const isStandardPppEscape = nextByte === PPP_ESCAPED_FLAG || nextByte === PPP_ESCAPED_ESC;
         trace.push({
           action: 'UNSTUFF_PPP',
           receivedIndex: i,
           escapedOctet: byteToHex(nextByte),
           recoveredByte: byteToHex(recoveredByte),
-          description: `Discarded ESC (${byteToHex(BYTE_ESC)}) at index ${i}; unescaped octet ${byteToHex(nextByte)} ^ 0x20 -> ${byteToHex(recoveredByte)}.`,
+          isStandardPppEscape,
+          description: isStandardPppEscape
+            ? `Discarded ESC (${byteToHex(BYTE_ESC)}) at index ${i}; unescaped standard octet ${byteToHex(nextByte)} ^ 0x20 -> ${byteToHex(recoveredByte)}.`
+            : `Discarded ESC (${byteToHex(BYTE_ESC)}) at index ${i}; unescaped transparent octet ${byteToHex(nextByte)} ^ 0x20 -> ${byteToHex(recoveredByte)} (valid RFC 1662 decode).`,
         });
         i++; // Skip the following escaped octet
       } else {
-        // Generic educational escape mode
+        // Generic educational escape mode: only 0x7E and 0x7D are valid escaped bytes
         if (nextByte !== BYTE_FLAG && nextByte !== BYTE_ESC) {
           return {
             destuffedBytes: new Uint8Array(destuffed),

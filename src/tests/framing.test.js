@@ -274,19 +274,55 @@ describe('Byte Stuffing & Unstuffing (RFC 1662 PPP & Generic)', () => {
     expect(recoveredText).toBe(text);
   });
 
-  it('detects dangling ESC byte at the end of the frame', () => {
+  it('detects dangling ESC byte immediately preceding closing FLAG (RFC 1662 abort sequence)', () => {
     const invalidFrame = new Uint8Array([BYTE_FLAG, 0x41, BYTE_ESC, BYTE_FLAG]);
     const result = unstuffBytes(invalidFrame, true);
     expect(result.hasError).toBe(true);
-    expect(result.errorMessage).toMatch(/Dangling ESC/i);
+    expect(result.errorMessage).toMatch(/Dangling ESC|Frame aborted/i);
   });
 
-  it('detects invalid RFC 1662 escape sequence where ESC is followed by an unexpected octet', () => {
-    // 0x7D followed by 0x41 ('A') instead of 0x5E or 0x5D
-    const invalidFrame = new Uint8Array([BYTE_FLAG, BYTE_ESC, 0x41, BYTE_FLAG]);
-    const result = unstuffBytes(invalidFrame, true, { mode: ByteStuffingMode.RFC1662_PPP });
+  it('correctly decodes non-minimum escaped octets per RFC 1662 transparent XOR 0x20 rule ([0x7D, 0x41] -> 0x61)', () => {
+    // RFC 1662 Sec 4.2: encountering 0x7D removes 0x7D and inverts bit 5 of next octet.
+    // 0x41 ^ 0x20 = 0x61 ('a'). Receiver accepts any escaped octet cleanly.
+    const frame = new Uint8Array([BYTE_FLAG, BYTE_ESC, 0x41, BYTE_FLAG]);
+    const result = unstuffBytes(frame, true, { mode: ByteStuffingMode.RFC1662_PPP });
+    expect(result.hasError).toBe(false);
+    expect(result.destuffedBytes).toEqual(new Uint8Array([0x61]));
+    expect(bytesToText(result.destuffedBytes)).toBe('a');
+  });
+
+  it('aborts frame when RFC 1662 escape octet is followed by internal FLAG (0x7D 0x7E inside payload)', () => {
+    // RFC 1662 Sec 4.2: "If 0x7E is preceded by 0x7D, the 0x7E is invalid and the frame is aborted."
+    const frameWithAbort = new Uint8Array([BYTE_FLAG, 0x41, BYTE_ESC, BYTE_FLAG, 0x42, BYTE_FLAG]);
+    const result = unstuffBytes(frameWithAbort, true, { mode: ByteStuffingMode.RFC1662_PPP });
     expect(result.hasError).toBe(true);
-    expect(result.errorMessage).toMatch(/Invalid RFC 1662 escape sequence/i);
+    expect(result.errorMessage).toMatch(/Frame aborted.*RFC 1662 escape octet.*immediately followed by FLAG/i);
+  });
+
+  it('enforces strict minimum escape policy when strictMinimumEscapes option is explicitly enabled', () => {
+    const frame = new Uint8Array([BYTE_FLAG, BYTE_ESC, 0x41, BYTE_FLAG]);
+    const result = unstuffBytes(frame, true, {
+      mode: ByteStuffingMode.RFC1662_PPP,
+      strictMinimumEscapes: true,
+    });
+    expect(result.hasError).toBe(true);
+    expect(result.errorMessage).toMatch(/Strict escape violation/i);
+  });
+
+  it('rejects invalid escape sequences in generic educational mode when ESC is followed by non-reserved byte', () => {
+    const invalidGenericFrame = new Uint8Array([BYTE_FLAG, BYTE_ESC, 0x41, BYTE_FLAG]);
+    const result = unstuffBytes(invalidGenericFrame, true, {
+      mode: ByteStuffingMode.GENERIC_ESCAPE,
+    });
+    expect(result.hasError).toBe(true);
+    expect(result.errorMessage).toMatch(/Invalid escape sequence.*Expected 0x7E or 0x7D/i);
+  });
+
+  it('detects dangling ESC byte in un-flagged payload stream', () => {
+    const rawPayload = new Uint8Array([0x41, BYTE_ESC]);
+    const result = unstuffBytes(rawPayload, false, { mode: ByteStuffingMode.RFC1662_PPP });
+    expect(result.hasError).toBe(true);
+    expect(result.errorMessage).toMatch(/Dangling ESC byte/i);
   });
 
   it('detects unescaped FLAG byte inside payload', () => {

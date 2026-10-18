@@ -119,22 +119,13 @@ export default function FramingView() {
 
       let receivedBytes = new Uint8Array(stuffed.framedBytes);
       if (injectByteError) {
-        if (byteMode === ByteStuffingMode.RFC1662_PPP) {
-          // In RFC 1662 mode, insert an invalid escaped octet 0x41 ('A') following ESC
-          const corrupt = new Uint8Array(stuffed.framedBytes.length + 2);
-          corrupt.set(stuffed.framedBytes.slice(0, -1), 0);
-          corrupt[corrupt.length - 3] = BYTE_ESC;
-          corrupt[corrupt.length - 2] = 0x41; // Invalid octet (not 0x5E or 0x5D)
-          corrupt[corrupt.length - 1] = BYTE_FLAG;
-          receivedBytes = corrupt;
-        } else {
-          // In generic mode, insert a dangling ESC right before the end flag
-          const corrupt = new Uint8Array(stuffed.framedBytes.length + 1);
-          corrupt.set(stuffed.framedBytes.slice(0, -1), 0);
-          corrupt[corrupt.length - 2] = BYTE_ESC;
-          corrupt[corrupt.length - 1] = BYTE_FLAG;
-          receivedBytes = corrupt;
-        }
+        // Corrupt by inserting an ESC (0x7D) immediately before the closing FLAG (0x7E)
+        // In RFC 1662, [0x7D, 0x7E] aborts the frame. In generic mode, it causes dangling ESC.
+        const corrupt = new Uint8Array(stuffed.framedBytes.length + 1);
+        corrupt.set(stuffed.framedBytes.slice(0, -1), 0);
+        corrupt[corrupt.length - 2] = BYTE_ESC;
+        corrupt[corrupt.length - 1] = BYTE_FLAG;
+        receivedBytes = corrupt;
       }
 
       const destuffed = unstuffBytes(receivedBytes, true, { mode: byteMode });
@@ -600,7 +591,7 @@ export default function FramingView() {
                 />
                 <span style={{ color: injectByteError ? 'var(--accent-rose)' : 'inherit' }}>
                   {byteMode === ByteStuffingMode.RFC1662_PPP
-                    ? 'Inject Invalid RFC 1662 Escape (0x7D 0x41)'
+                    ? 'Inject RFC 1662 Abort Sequence (0x7D 0x7E)'
                     : 'Inject Dangling ESC Error'}
                 </span>
               </label>
