@@ -40,18 +40,19 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 1: Project Planning & Requirements Analysis** (Approved)
 - [x] **Phase 2: Project Foundation, Git Setup & Tracking Documentation** (Vite + React + Vitest initialized, `.gitignore` created, test runner operational)
 - [x] **Phase 3: Discrete-Event Simulation Engine Core** (`EventQueue.js`, `SimulationEngine.js`, `Channel.js`, and comprehensive unit tests in `src/tests/engine.test.js` passing)
+- [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js`, `charCount.js`, `FramingView.jsx`, and 25 unit tests in `src/tests/framing.test.js` passing)
 
 ---
 
 ## 5. Known Issues
-- None. Discrete-event scheduling, virtual clock progression, event cancellation, and deterministic channel fault injection pass all unit tests without wall-clock dependencies.
+- None. Bit stuffing, byte stuffing, and character-count length framing algorithms execute correctly, round-trip tests preserve all payloads, and framing desynchronization behavior is verified.
 
 ---
 
 ## 6. Exact Next Step
-- **Phase 4: Framing Algorithms & UI Visualizer**
-  - Implement `src/core/framing/bitStuffing.js` (Flag `01111110`, zero-insertion after five consecutive `1`s, destuffing recovery).
-  - Implement `src/core/framing/byteStuffing.js` (Byte/character stuffing with `FLAG` and `ESC` escape characters).
-  - Implement `src/core/framing/charCount.js` (Character-count length framing + framing error desynchronization scenario).
-  - Create `src/tests/framing.test.js` with comprehensive edge cases (consecutive flags, payload flag collision, escape escaping escape).
-  - Build interactive `FramingView.jsx` with bit-by-bit visual inspector.
+- **Phase 5: Error Control & Step-by-Step CRC Visualizer**
+  - Implement `src/core/error-control/crc.js` (Modulo-2 polynomial division, remainder FCS calculation, standard generators: CRC-8, CRC-16-CCITT, bitwise step-by-step XOR division trace).
+  - Implement `src/core/error-control/checksum.js` (16-bit 1's complement addition and verification).
+  - Implement `src/core/error-control/parity.js` (1D and 2D even/odd parity matrix calculation and error detection).
+  - Create `src/tests/errorControl.test.js` covering known textbook polynomial division vectors, burst error detection bounds, and single/multi-bit error detection.
+  - Build interactive `ErrorControlView.jsx` with an interactive division trace table and channel error injection.

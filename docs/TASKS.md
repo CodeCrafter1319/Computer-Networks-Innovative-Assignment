@@ -1,9 +1,9 @@
 # TASKS.md — Project Task Tracker
 
 ## 1. Current Status Overview
-- **Active Phase:** Phase 3 Complete (Awaiting User Sign-off to advance to Phase 4)
-- **Current Task:** Verification of Discrete-Event Simulation Engine Core & Deterministic Channel
-- **Next Task:** Phase 4 — Framing Algorithms & UI Visualizer
+- **Active Phase:** Phase 4 Complete (Awaiting User Sign-off to advance to Phase 5)
+- **Current Task:** Verification of Framing Algorithms & Interactive Visualizer
+- **Next Task:** Phase 5 — Error Control & Step-by-Step CRC Visualizer
 
 ---
 
@@ -22,17 +22,15 @@
 - [x] **Task 3.2:** Implement `src/core/engine/SimulationEngine.js` (virtual clock, tick stepping, scheduling, timer cancellation, pause/resume/reset).
 - [x] **Task 3.3:** Implement `src/core/engine/Channel.js` (non-mutating frame transmission, propagation delay, fault injection: drop, corrupt, delay).
 - [x] **Task 3.4:** Write Vitest unit tests in `src/tests/engine.test.js` (22 tests covering ordering, timer cancel, step execution, immutability, and faults).
+- [x] **Task 4.1:** Implement pure Bit Stuffing and Destuffing algorithms (`01111110` flag, zero-insertion after five `1`s, trace generation, abort sequence detection).
+- [x] **Task 4.2:** Implement Byte Stuffing and Unstuffing (`0x7E` FLAG, `0x7D` ESC, UTF-8 text support, invalid escape handling).
+- [x] **Task 4.3:** Implement Character-Count framing with total length header, multi-frame streaming, and desynchronization simulation.
+- [x] **Task 4.4:** Write Vitest unit tests in `src/tests/framing.test.js` (25 tests covering boundary conditions, payloads containing flags, and error states).
+- [x] **Task 4.5:** Build interactive `FramingView.jsx` with pipeline visualization, live bit/byte rendering, presets, error injection, and Viva Helper panel.
 
 ---
 
 ## 3. Pending Tasks (Roadmap)
-
-### Phase 4: Framing Implementation & Visualizer
-- [ ] **Task 4.1:** Implement pure Bit Stuffing and Destuffing algorithms (`01111110` flag, zero-insertion after five `1`s).
-- [ ] **Task 4.2:** Implement Byte Stuffing (character escaping with `ESC` and `FLAG`).
-- [ ] **Task 4.3:** Implement Character Count framing with desynchronization edge-case demo.
-- [ ] **Task 4.4:** Write unit tests covering boundary and payload-flag collision edge cases.
-- [ ] **Task 4.5:** Build interactive Framing UI View with bit-level visual breakdown.
 
 ### Phase 5: Error Control & Modulo-2 Division Visualizer
 - [ ] **Task 5.1:** Implement Modulo-2 polynomial division with full intermediate XOR traces.
