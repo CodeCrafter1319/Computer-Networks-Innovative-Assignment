@@ -23,10 +23,11 @@
 - [x] **Task 3.3:** Implement `src/core/engine/Channel.js` (non-mutating frame transmission, propagation delay, fault injection: drop, corrupt, delay).
 - [x] **Task 3.4:** Write Vitest unit tests in `src/tests/engine.test.js` (22 tests covering ordering, timer cancel, step execution, immutability, and faults).
 - [x] **Task 4.1:** Implement pure Bit Stuffing and Destuffing algorithms (`01111110` flag, zero-insertion after five `1`s, trace generation, abort sequence detection).
-- [x] **Task 4.2:** Implement Byte Stuffing and Unstuffing (`0x7E` FLAG, `0x7D` ESC, UTF-8 text support, invalid escape handling).
+- [x] **Task 4.2:** Implement Byte Stuffing and Unstuffing (RFC 1662 section 4.2 PPP octet stuffing standard `0x7E -> [0x7D, 0x5E]` and `0x7D -> [0x7D, 0x5D]`, plus Generic Educational Escape mode).
 - [x] **Task 4.3:** Implement Character-Count framing with total length header, multi-frame streaming, and desynchronization simulation.
-- [x] **Task 4.4:** Write Vitest unit tests in `src/tests/framing.test.js` (25 tests covering boundary conditions, payloads containing flags, and error states).
-- [x] **Task 4.5:** Build interactive `FramingView.jsx` with pipeline visualization, live bit/byte rendering, presets, error injection, and Viva Helper panel.
+- [x] **Task 4.4:** Write Vitest unit tests in `src/tests/framing.test.js` (30 tests covering boundary conditions, raw flag payloads, RFC 1662 escaping, and error states).
+- [x] **Task 4.5:** Build interactive `FramingView.jsx` with pipeline visualization, live bit/byte rendering, presets, error injection, convention toggle, and Viva Helper panel.
+- [x] **Task 4.6:** Technical audit verification of byte stuffing standards (RFC 1662) and raw flag collision protection.
 
 ---
 

@@ -65,20 +65,25 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/framing.test.js` | 5 consecutive ones bit stuffing | Inserts `0` immediately after fifth `1` (`11111` -> `111110`) | Pass | **PASS** |
 | `src/tests/framing.test.js` | Multiple stuffing events | Correctly handles multiple disjoint runs of five `1`s | Pass | **PASS** |
 | `src/tests/framing.test.js` | Long runs of ones | Inserts `0` after each block of five consecutive `1`s | Pass | **PASS** |
-| `src/tests/framing.test.js` | Raw flag collision prevention | Payload containing `01111110` stuffed to `011111010` | Pass | **PASS** |
+| `src/tests/framing.test.js` | Raw flag collision prevention | Payload `01111110` stuffed to `011111010` (no flag leakage) | Pass | **PASS** |
+| `src/tests/framing.test.js` | Double raw flag collision | Consecutive flags `0111111001111110` safely stuffed & recovered | Pass | **PASS** |
+| `src/tests/framing.test.js` | Payload ending with five ones | `0011111` stuffed to `00111110` and restored cleanly | Pass | **PASS** |
+| `src/tests/framing.test.js` | 15 consecutive ones | 3 stuffed zeros added, destuffing recovers all 15 ones | Pass | **PASS** |
 | `src/tests/framing.test.js` | Bit stuffing round-trip | All payloads preserved perfectly through stuffing/destuffing | Pass | **PASS** |
 | `src/tests/framing.test.js` | Empty bit stream handling | Stuffs to `FLAG + FLAG`; destuffs cleanly to empty string | Pass | **PASS** |
 | `src/tests/framing.test.js` | UTF-8 text bit conversion round-trip | Text converted to bits, stuffed, destuffed, and recovered | Pass | **PASS** |
 | `src/tests/framing.test.js` | Abort sequence detection | Seven consecutive `1`s flagged as Abort / framing error | Pass | **PASS** |
+| `src/tests/framing.test.js` | Unescaped delimiter flag detection | Six `1`s followed by `0` in payload detected as framing violation | Pass | **PASS** |
 | `src/tests/framing.test.js` | Boundary flag validation | Missing or corrupt start/end flags rejected safely | Pass | **PASS** |
 | `src/tests/framing.test.js` | Byte stuffing normal pass-through | Non-reserved bytes untouched, framed with `0x7E` | Pass | **PASS** |
-| `src/tests/framing.test.js` | Reserved FLAG byte escaping | `0x7E` in payload escaped as `[0x7D, 0x7E]` | Pass | **PASS** |
-| `src/tests/framing.test.js` | Reserved ESC byte escaping | `0x7D` in payload escaped as `[0x7D, 0x7D]` | Pass | **PASS** |
-| `src/tests/framing.test.js` | Multiple consecutive FLAG/ESC escaping | Successive reserved bytes escaped in sequence | Pass | **PASS** |
-| `src/tests/framing.test.js` | Byte stuffing round-trip | Raw byte arrays restored identically after unstuffing | Pass | **PASS** |
+| `src/tests/framing.test.js` | RFC 1662 PPP FLAG escaping | `0x7E` in payload escaped as `[0x7D, 0x5E]` (`0x7E ^ 0x20 = 0x5E`) | Pass | **PASS** |
+| `src/tests/framing.test.js` | RFC 1662 PPP ESC escaping | `0x7D` in payload escaped as `[0x7D, 0x5D]` (`0x7D ^ 0x20 = 0x5D`) | Pass | **PASS** |
+| `src/tests/framing.test.js` | RFC 1662 PPP unstuffing via XOR | `[0x7D, 0x5E]` restored to `0x7E`, `[0x7D, 0x5D]` to `0x7D` | Pass | **PASS** |
+| `src/tests/framing.test.js` | Generic Educational Escape mode | `0x7E -> [0x7D, 0x7E]` and `0x7D -> [0x7D, 0x7D]` verified | Pass | **PASS** |
+| `src/tests/framing.test.js` | RFC 1662 round-trip byte preservation | Raw byte arrays restored identically after unstuffing | Pass | **PASS** |
 | `src/tests/framing.test.js` | UTF-8 multi-byte emoji/symbol text | Unicode strings with emojis recovered without loss | Pass | **PASS** |
 | `src/tests/framing.test.js` | Dangling ESC error detection | Trailing `0x7D` before closing flag caught as error | Pass | **PASS** |
-| `src/tests/framing.test.js` | Invalid escape sequence rejection | `0x7D` followed by unescaped non-reserved byte rejected | Pass | **PASS** |
+| `src/tests/framing.test.js` | Invalid RFC 1662 escape octet | `0x7D` followed by invalid octet rejected safely | Pass | **PASS** |
 | `src/tests/framing.test.js` | Unescaped internal FLAG detection | Raw `0x7E` inside payload flagged as framing violation | Pass | **PASS** |
 | `src/tests/framing.test.js` | Character-count single frame | Length header equals total frame size (header + payload) | Pass | **PASS** |
 | `src/tests/framing.test.js` | Multi-frame stream parsing | Concatenated frames parsed correctly into individual payloads | Pass | **PASS** |
@@ -87,7 +92,7 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/framing.test.js` | Invalid length header (< 1) | Zero or negative length header rejected safely | Pass | **PASS** |
 | `src/tests/framing.test.js` | Length header corruption desynchronization | Single corrupted length byte causes cascading framing failure | Pass | **PASS** |
 
-**Summary:** 3 files, 49 tests passed, 0 failed.
+**Summary:** 3 files, 54 tests passed, 0 failed.
 
 ---
 

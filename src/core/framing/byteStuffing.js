@@ -1,28 +1,33 @@
 /**
  * byteStuffing.js
  * 
- * Byte / Character Stuffing (PPP / Tanenbaum Data Link Layer Standard)
+ * Byte / Octet Stuffing Implementation
  * 
- * Explicit Conventions:
- * - FLAG Byte:   0x7E (126 in decimal, '~' in ASCII)
- * - ESCAPE Byte: 0x7D (125 in decimal, '}' in ASCII)
+ * Supported Conventions:
+ * 1. RFC 1662 PPP Octet Stuffing (Standard):
+ *    - FLAG Byte:   0x7E (126 in decimal, '~' in ASCII, binary 01111110)
+ *    - ESC Byte:    0x7D (125 in decimal, '}' in ASCII, binary 01111101)
+ *    - Inversion mask (XOR): 0x20 (32 in decimal, binary 00100000, inverts bit 5/6)
+ *    - When 0x7E occurs in payload -> escaped as [0x7D, 0x5E] (0x7E ^ 0x20 = 0x5E, '~' -> '^')
+ *    - When 0x7D occurs in payload -> escaped as [0x7D, 0x5D] (0x7D ^ 0x20 = 0x5D, '}' -> ']')
+ *    - Receiver reverses transformation by XORing the octet following 0x7D with 0x20.
  * 
- * Framing Rules:
- * - Each frame begins and ends with the FLAG byte (0x7E).
- * - If a FLAG byte (0x7E) appears inside the payload, it is escaped by inserting an ESC byte
- *   immediately before it: [0x7E] -> [0x7D, 0x7E].
- * - If an ESC byte (0x7D) appears inside the payload, it is escaped by inserting an ESC byte
- *   immediately before it: [0x7D] -> [0x7D, 0x7D].
- * - All other bytes pass through unchanged.
- * 
- * Receiver Unstuffing Rules:
- * - The receiver strips the leading and trailing FLAG bytes.
- * - When an ESC byte (0x7D) is encountered, it is discarded, and the following byte is taken literally.
- * - An ESC byte at the very end of the payload without a following byte is an invalid escape error.
+ * 2. Generic Educational Character Stuffing (Tanenbaum):
+ *    - Reserved FLAG byte (0x7E) is preceded by ESC (0x7D): [0x7E] -> [0x7D, 0x7E]
+ *    - Reserved ESC byte (0x7D) is preceded by ESC (0x7D):  [0x7D] -> [0x7D, 0x7D]
  */
 
 export const BYTE_FLAG = 0x7e; // 126, 01111110
 export const BYTE_ESC = 0x7d;  // 125, 01111101
+export const ESC_XOR = 0x20;   // 32,  00100000 (RFC 1662 5th-bit inversion mask)
+
+export const PPP_ESCAPED_FLAG = BYTE_FLAG ^ ESC_XOR; // 0x5E ('^')
+export const PPP_ESCAPED_ESC = BYTE_ESC ^ ESC_XOR;   // 0x5D (']')
+
+export const ByteStuffingMode = Object.freeze({
+  RFC1662_PPP: 'RFC1662_PPP',
+  GENERIC_ESCAPE: 'GENERIC_ESCAPE',
+});
 
 /**
  * Format a byte integer as a 2-digit uppercase hex string (e.g. 0x7E).
@@ -31,7 +36,7 @@ export const BYTE_ESC = 0x7d;  // 125, 01111101
  * @returns {string}
  */
 export function byteToHex(byteValue) {
-  return '0x' + byteValue.toString(16).toUpperCase().padStart(2, '0');
+  return '0x' + (byteValue & 0xff).toString(16).toUpperCase().padStart(2, '0');
 }
 
 /**
@@ -41,7 +46,7 @@ export function byteToHex(byteValue) {
  * @returns {string}
  */
 export function byteToBin(byteValue) {
-  return byteValue.toString(2).padStart(8, '0');
+  return (byteValue & 0xff).toString(2).padStart(8, '0');
 }
 
 /**
@@ -84,15 +89,19 @@ export function bytesToHexString(bytes) {
  * Perform byte stuffing on a payload of bytes.
  * 
  * @param {Uint8Array|Array<number>} payloadBytes - Raw input bytes.
+ * @param {Object} [options={}]
+ * @param {string} [options.mode=ByteStuffingMode.RFC1662_PPP] - RFC1662_PPP or GENERIC_ESCAPE.
  * @returns {Object} {
  *   originalBytes: Uint8Array,
  *   stuffedBytes: Uint8Array,
  *   framedBytes: Uint8Array,
  *   escapedCount: number,
+ *   mode: string,
  *   trace: Array<Object>
  * }
  */
-export function stuffBytes(payloadBytes) {
+export function stuffBytes(payloadBytes, options = {}) {
+  const mode = options.mode || ByteStuffingMode.RFC1662_PPP;
   const input = payloadBytes instanceof Uint8Array ? payloadBytes : new Uint8Array(payloadBytes);
   const stuffed = [];
   const trace = [];
@@ -102,29 +111,59 @@ export function stuffBytes(payloadBytes) {
     const byte = input[i];
 
     if (byte === BYTE_FLAG) {
-      // Escape FLAG: insert ESC followed by FLAG
-      stuffed.push(BYTE_ESC);
-      stuffed.push(BYTE_FLAG);
       escapedCount++;
-      trace.push({
-        action: 'ESCAPE_FLAG',
-        originalIndex: i,
-        byteValue: byte,
-        hex: byteToHex(byte),
-        description: `Payload contains reserved FLAG byte (${byteToHex(byte)}). Inserted ESC (${byteToHex(BYTE_ESC)}) prefix.`,
-      });
+      if (mode === ByteStuffingMode.RFC1662_PPP) {
+        // RFC 1662: [0x7D, 0x7E ^ 0x20] -> [0x7D, 0x5E]
+        stuffed.push(BYTE_ESC);
+        stuffed.push(PPP_ESCAPED_FLAG);
+        trace.push({
+          action: 'ESCAPE_FLAG_PPP',
+          originalIndex: i,
+          byteValue: byte,
+          hex: byteToHex(byte),
+          escapedSequence: [byteToHex(BYTE_ESC), byteToHex(PPP_ESCAPED_FLAG)],
+          description: `Payload contains reserved FLAG byte (${byteToHex(byte)}). Escaped per RFC 1662 as [${byteToHex(BYTE_ESC)}, ${byteToHex(PPP_ESCAPED_FLAG)}] (0x7E XOR 0x20).`,
+        });
+      } else {
+        // Generic educational escape: [0x7D, 0x7E]
+        stuffed.push(BYTE_ESC);
+        stuffed.push(BYTE_FLAG);
+        trace.push({
+          action: 'ESCAPE_FLAG_GENERIC',
+          originalIndex: i,
+          byteValue: byte,
+          hex: byteToHex(byte),
+          escapedSequence: [byteToHex(BYTE_ESC), byteToHex(BYTE_FLAG)],
+          description: `Payload contains reserved FLAG byte (${byteToHex(byte)}). Inserted ESC (${byteToHex(BYTE_ESC)}) prefix.`,
+        });
+      }
     } else if (byte === BYTE_ESC) {
-      // Escape ESC: insert ESC followed by ESC
-      stuffed.push(BYTE_ESC);
-      stuffed.push(BYTE_ESC);
       escapedCount++;
-      trace.push({
-        action: 'ESCAPE_ESC',
-        originalIndex: i,
-        byteValue: byte,
-        hex: byteToHex(byte),
-        description: `Payload contains reserved ESC byte (${byteToHex(byte)}). Inserted ESC (${byteToHex(BYTE_ESC)}) prefix.`,
-      });
+      if (mode === ByteStuffingMode.RFC1662_PPP) {
+        // RFC 1662: [0x7D, 0x7D ^ 0x20] -> [0x7D, 0x5D]
+        stuffed.push(BYTE_ESC);
+        stuffed.push(PPP_ESCAPED_ESC);
+        trace.push({
+          action: 'ESCAPE_ESC_PPP',
+          originalIndex: i,
+          byteValue: byte,
+          hex: byteToHex(byte),
+          escapedSequence: [byteToHex(BYTE_ESC), byteToHex(PPP_ESCAPED_ESC)],
+          description: `Payload contains reserved ESC byte (${byteToHex(byte)}). Escaped per RFC 1662 as [${byteToHex(BYTE_ESC)}, ${byteToHex(PPP_ESCAPED_ESC)}] (0x7D XOR 0x20).`,
+        });
+      } else {
+        // Generic educational escape: [0x7D, 0x7D]
+        stuffed.push(BYTE_ESC);
+        stuffed.push(BYTE_ESC);
+        trace.push({
+          action: 'ESCAPE_ESC_GENERIC',
+          originalIndex: i,
+          byteValue: byte,
+          hex: byteToHex(byte),
+          escapedSequence: [byteToHex(BYTE_ESC), byteToHex(BYTE_ESC)],
+          description: `Payload contains reserved ESC byte (${byteToHex(byte)}). Inserted ESC (${byteToHex(BYTE_ESC)}) prefix.`,
+        });
+      }
     } else {
       stuffed.push(byte);
       trace.push({
@@ -145,6 +184,7 @@ export function stuffBytes(payloadBytes) {
     stuffedBytes: new Uint8Array(stuffed),
     framedBytes: new Uint8Array(framed),
     escapedCount,
+    mode,
     trace,
   };
 }
@@ -154,15 +194,19 @@ export function stuffBytes(payloadBytes) {
  * 
  * @param {Uint8Array|Array<number>} receivedBytes - The received bytes.
  * @param {boolean} [hasFlags=true] - Whether the input contains leading/trailing FLAG bytes.
+ * @param {Object} [options={}]
+ * @param {string} [options.mode=ByteStuffingMode.RFC1662_PPP] - RFC1662_PPP or GENERIC_ESCAPE.
  * @returns {Object} {
  *   destuffedBytes: Uint8Array,
  *   removedEscapeCount: number,
+ *   mode: string,
  *   trace: Array<Object>,
  *   hasError: boolean,
  *   errorMessage: string|null
  * }
  */
-export function unstuffBytes(receivedBytes, hasFlags = true) {
+export function unstuffBytes(receivedBytes, hasFlags = true, options = {}) {
+  const mode = options.mode || ByteStuffingMode.RFC1662_PPP;
   const input = receivedBytes instanceof Uint8Array ? receivedBytes : new Uint8Array(receivedBytes);
 
   let bytesToProcess = input;
@@ -173,6 +217,7 @@ export function unstuffBytes(receivedBytes, hasFlags = true) {
       return {
         destuffedBytes: new Uint8Array(0),
         removedEscapeCount: 0,
+        mode,
         trace: [],
         hasError: true,
         errorMessage: 'Frame is too short to contain opening and closing FLAG bytes.',
@@ -183,6 +228,7 @@ export function unstuffBytes(receivedBytes, hasFlags = true) {
       return {
         destuffedBytes: new Uint8Array(0),
         removedEscapeCount: 0,
+        mode,
         trace: [],
         hasError: true,
         errorMessage: `Missing required opening or closing FLAG byte (${byteToHex(BYTE_FLAG)}).`,
@@ -206,6 +252,7 @@ export function unstuffBytes(receivedBytes, hasFlags = true) {
         return {
           destuffedBytes: new Uint8Array(destuffed),
           removedEscapeCount,
+          mode,
           trace,
           hasError: true,
           errorMessage: `Dangling ESC byte (${byteToHex(BYTE_ESC)}) at index ${i} with no escaped byte following.`,
@@ -213,32 +260,62 @@ export function unstuffBytes(receivedBytes, hasFlags = true) {
       }
 
       const nextByte = bytesToProcess[i + 1];
-      if (nextByte !== BYTE_FLAG && nextByte !== BYTE_ESC) {
-        return {
-          destuffedBytes: new Uint8Array(destuffed),
-          removedEscapeCount,
-          trace,
-          hasError: true,
-          errorMessage: `Invalid escape sequence: ESC (${byteToHex(BYTE_ESC)}) followed by unexpected byte ${byteToHex(nextByte)} at index ${i + 1}.`,
-        };
-      }
 
-      // Unstuff: discard the ESC byte and accept nextByte literally
-      destuffed.push(nextByte);
-      removedEscapeCount++;
-      trace.push({
-        action: 'UNSTUFF_ESC',
-        receivedIndex: i,
-        byteValue: nextByte,
-        hex: byteToHex(nextByte),
-        description: `Discarded ESC byte at index ${i}; decoded escaped byte ${byteToHex(nextByte)}.`,
-      });
-      i++; // Skip the escaped byte in next loop iteration
+      if (mode === ByteStuffingMode.RFC1662_PPP) {
+        // RFC 1662 validation: next byte must be 0x5E (for flag) or 0x5D (for esc)
+        if (nextByte !== PPP_ESCAPED_FLAG && nextByte !== PPP_ESCAPED_ESC) {
+          return {
+            destuffedBytes: new Uint8Array(destuffed),
+            removedEscapeCount,
+            mode,
+            trace,
+            hasError: true,
+            errorMessage: `Invalid RFC 1662 escape sequence: ESC (${byteToHex(BYTE_ESC)}) followed by unexpected octet ${byteToHex(nextByte)} at index ${i + 1}. Expected 0x5E or 0x5D.`,
+          };
+        }
+
+        // Unstuff: invert 5th bit (XOR with 0x20)
+        const recoveredByte = nextByte ^ ESC_XOR;
+        destuffed.push(recoveredByte);
+        removedEscapeCount++;
+        trace.push({
+          action: 'UNSTUFF_PPP',
+          receivedIndex: i,
+          escapedOctet: byteToHex(nextByte),
+          recoveredByte: byteToHex(recoveredByte),
+          description: `Discarded ESC (${byteToHex(BYTE_ESC)}) at index ${i}; unescaped octet ${byteToHex(nextByte)} ^ 0x20 -> ${byteToHex(recoveredByte)}.`,
+        });
+        i++; // Skip the following escaped octet
+      } else {
+        // Generic educational escape mode
+        if (nextByte !== BYTE_FLAG && nextByte !== BYTE_ESC) {
+          return {
+            destuffedBytes: new Uint8Array(destuffed),
+            removedEscapeCount,
+            mode,
+            trace,
+            hasError: true,
+            errorMessage: `Invalid escape sequence: ESC (${byteToHex(BYTE_ESC)}) followed by unexpected byte ${byteToHex(nextByte)} at index ${i + 1}. Expected 0x7E or 0x7D.`,
+          };
+        }
+
+        destuffed.push(nextByte);
+        removedEscapeCount++;
+        trace.push({
+          action: 'UNSTUFF_GENERIC',
+          receivedIndex: i,
+          byteValue: nextByte,
+          hex: byteToHex(nextByte),
+          description: `Discarded ESC byte at index ${i}; decoded escaped byte ${byteToHex(nextByte)}.`,
+        });
+        i++; // Skip the escaped byte
+      }
     } else if (byte === BYTE_FLAG) {
       // Unescaped FLAG inside payload is a framing violation
       return {
         destuffedBytes: new Uint8Array(destuffed),
         removedEscapeCount,
+        mode,
         trace,
         hasError: true,
         errorMessage: `Framing violation: Unescaped FLAG byte (${byteToHex(BYTE_FLAG)}) found inside payload at index ${i}.`,
@@ -258,6 +335,7 @@ export function unstuffBytes(receivedBytes, hasFlags = true) {
   return {
     destuffedBytes: new Uint8Array(destuffed),
     removedEscapeCount,
+    mode,
     trace,
     hasError: false,
     errorMessage: null,

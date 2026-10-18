@@ -31,8 +31,10 @@ The simulator is designed with high academic rigor and viva explainability, prio
    - Stop-and-Wait ARQ: 1-bit sequence number ($0, 1$).
    - Go-Back-N ARQ: Window size $W \le 2^m - 1$ for an $m$-bit sequence space.
    - Selective Repeat ARQ: Window size $W \le 2^{m-1}$.
-4. **CRC Calculation:** Modulo-2 polynomial division is implemented bit-by-bit to expose full step-by-step traces for examiner review.
-5. **No External UI Frameworks:** Avoided Tailwind / MUI to keep the codebase transparent, lightweight, and straightforward to explain during evaluation.
+4. **Byte Stuffing Conventions:** Default follows standard **RFC 1662 Section 4.2** (PPP Octet Stuffing: `0x7E` $\rightarrow$ `[0x7D, 0x5E]`, `0x7D` $\rightarrow$ `[0x7D, 0x5D]`, receiver restores via XOR `0x20`). Generic educational escape mode (`[0x7D, 0x7E]`, `[0x7D, 0x7D]`) is also supported and clearly labeled.
+5. **Bit Stuffing Flag Protection:** Payloads containing raw flag sequences (`01111110`) or multiple consecutive flags are stuffed without leaking delimiter flags into the transmission stream, and destuffing restores the exact original bitstream.
+6. **CRC Calculation:** Modulo-2 polynomial division is implemented bit-by-bit to expose full step-by-step traces for examiner review.
+7. **No External UI Frameworks:** Avoided Tailwind / MUI to keep the codebase transparent, lightweight, and straightforward to explain during evaluation.
 
 ---
 
@@ -40,12 +42,12 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 1: Project Planning & Requirements Analysis** (Approved)
 - [x] **Phase 2: Project Foundation, Git Setup & Tracking Documentation** (Vite + React + Vitest initialized, `.gitignore` created, test runner operational)
 - [x] **Phase 3: Discrete-Event Simulation Engine Core** (`EventQueue.js`, `SimulationEngine.js`, `Channel.js`, and comprehensive unit tests in `src/tests/engine.test.js` passing)
-- [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js`, `charCount.js`, `FramingView.jsx`, and 25 unit tests in `src/tests/framing.test.js` passing)
+- [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js` with RFC 1662 & generic modes, `charCount.js`, `FramingView.jsx`, and 30 unit tests in `src/tests/framing.test.js` passing)
 
 ---
 
 ## 5. Known Issues
-- None. Bit stuffing, byte stuffing, and character-count length framing algorithms execute correctly, round-trip tests preserve all payloads, and framing desynchronization behavior is verified.
+- None. RFC 1662 PPP octet stuffing, generic byte stuffing, bit stuffing with raw flag payloads, and character-count length framing algorithms execute correctly with 100% test pass rate.
 
 ---
 

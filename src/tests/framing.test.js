@@ -2,8 +2,8 @@
  * framing.test.js
  * 
  * Comprehensive unit test suite for:
- * 1. Bit Stuffing and Destuffing (HDLC standard 01111110, 5 ones rule, abort sequences)
- * 2. Byte Stuffing and Unstuffing (0x7E FLAG, 0x7D ESC, UTF-8 text, malformed sequences)
+ * 1. Bit Stuffing and Destuffing (HDLC standard 01111110, 5 ones rule, abort sequences, flag collisions)
+ * 2. Byte Stuffing and Unstuffing (RFC 1662 PPP 0x7D 0x5E / 0x7D 0x5D + Generic Educational Escape)
  * 3. Character-Count Framing (Length header encoding, multi-frame streaming, desynchronization demo)
  */
 
@@ -19,6 +19,10 @@ import {
 import {
   BYTE_FLAG,
   BYTE_ESC,
+  ESC_XOR,
+  PPP_ESCAPED_FLAG,
+  PPP_ESCAPED_ESC,
+  ByteStuffingMode,
   stuffBytes,
   unstuffBytes,
   textToBytes,
@@ -50,7 +54,6 @@ describe('Bit Stuffing & Destuffing', () => {
   });
 
   it('handles multiple stuffing events in a single payload', () => {
-    // Two runs of five 1s: '11111' + '0' + '11111'
     const input = '11111011111';
     const result = stuffBits(input);
     expect(result.stuffedBits).toBe('1111100111110');
@@ -58,19 +61,57 @@ describe('Bit Stuffing & Destuffing', () => {
   });
 
   it('stuffs consecutive runs of more than five 1s properly', () => {
-    // Ten consecutive 1s: first 5 -> stuff 0, next 5 -> stuff 0
     const input = '1111111111';
     const result = stuffBits(input);
     expect(result.stuffedBits).toBe('111110111110');
     expect(result.stuffingCount).toBe(2);
   });
 
-  it('prevents accidental flag collision when payload contains the flag sequence', () => {
-    // If payload contains '01111110' (the raw flag), bit stuffing turns it into '011111010'
+  it('prevents accidental flag collision when payload contains the exact raw flag sequence', () => {
     const input = '01111110';
     const result = stuffBits(input);
+    // 0 + 11111 (stuff 0) + 1 + 0 = 011111010
     expect(result.stuffedBits).toBe('011111010');
+    // Stuffed payload itself must NOT contain 01111110
+    expect(result.stuffedBits.includes(BIT_FLAG)).toBe(false);
     expect(result.framedBits).toBe(`${BIT_FLAG}011111010${BIT_FLAG}`);
+
+    // Destuffing must recover the exact original flag
+    const destuffed = destuffBits(result.framedBits, true);
+    expect(destuffed.hasError).toBe(false);
+    expect(destuffed.destuffedBits).toBe('01111110');
+  });
+
+  it('handles multiple consecutive raw flags in payload without flag leakage', () => {
+    const input = '0111111001111110';
+    const result = stuffBits(input);
+    expect(result.stuffedBits).toBe('011111010011111010');
+    expect(result.stuffedBits.includes(BIT_FLAG)).toBe(false);
+
+    const destuffed = destuffBits(result.framedBits, true);
+    expect(destuffed.hasError).toBe(false);
+    expect(destuffed.destuffedBits).toBe(input);
+  });
+
+  it('handles payload ending with five consecutive 1s', () => {
+    const input = '0011111';
+    const result = stuffBits(input);
+    expect(result.stuffedBits).toBe('00111110');
+
+    const destuffed = destuffBits(result.framedBits, true);
+    expect(destuffed.hasError).toBe(false);
+    expect(destuffed.destuffedBits).toBe('0011111');
+  });
+
+  it('handles 15 consecutive 1s correctly', () => {
+    const input = '111111111111111'; // 15 ones
+    const result = stuffBits(input);
+    expect(result.stuffingCount).toBe(3);
+    expect(result.stuffedBits).toBe('111110111110111110');
+
+    const destuffed = destuffBits(result.framedBits, true);
+    expect(destuffed.hasError).toBe(false);
+    expect(destuffed.destuffedBits).toBe(input);
   });
 
   it('destuffs framed bits back to the exact original payload (round-trip)', () => {
@@ -116,11 +157,18 @@ describe('Bit Stuffing & Destuffing', () => {
   });
 
   it('detects abort sequence / framing error with seven consecutive 1s', () => {
-    // Frame containing seven consecutive 1s in payload
     const corruptFrame = `${BIT_FLAG}011111110${BIT_FLAG}`;
     const result = destuffBits(corruptFrame, true);
     expect(result.hasError).toBe(true);
     expect(result.errorMessage).toMatch(/Abort sequence/i);
+  });
+
+  it('detects unescaped delimiter flag pattern inside payload', () => {
+    // Six 1s followed by 0 inside payload without prior stuffing
+    const corruptFrame = `${BIT_FLAG}0001111110000${BIT_FLAG}`;
+    const result = destuffBits(corruptFrame, true);
+    expect(result.hasError).toBe(true);
+    expect(result.errorMessage).toMatch(/Unescaped delimiter flag pattern/i);
   });
 
   it('detects missing or invalid boundary flags', () => {
@@ -132,8 +180,8 @@ describe('Bit Stuffing & Destuffing', () => {
   });
 });
 
-describe('Byte Stuffing & Unstuffing', () => {
-  it('correctly passes normal bytes without stuffing', () => {
+describe('Byte Stuffing & Unstuffing (RFC 1662 PPP & Generic)', () => {
+  it('correctly passes normal bytes without stuffing in RFC 1662 PPP mode', () => {
     const data = [0x41, 0x42, 0x43]; // 'ABC'
     const result = stuffBytes(data);
     expect(result.escapedCount).toBe(0);
@@ -141,35 +189,63 @@ describe('Byte Stuffing & Unstuffing', () => {
     expect(Array.from(result.framedBytes)).toEqual([BYTE_FLAG, 0x41, 0x42, 0x43, BYTE_FLAG]);
   });
 
-  it('escapes reserved FLAG byte (0x7E) with ESC (0x7D)', () => {
+  it('implements RFC 1662 section 4.2: escapes FLAG (0x7E) as [0x7D, 0x5E]', () => {
+    // 0x7E ^ 0x20 = 0x5E
+    expect(BYTE_FLAG ^ ESC_XOR).toBe(0x5e);
+
     const data = [0x41, BYTE_FLAG, 0x42]; // A, FLAG, B
-    const result = stuffBytes(data);
+    const result = stuffBytes(data, { mode: ByteStuffingMode.RFC1662_PPP });
+
     expect(result.escapedCount).toBe(1);
-    expect(Array.from(result.stuffedBytes)).toEqual([0x41, BYTE_ESC, BYTE_FLAG, 0x42]);
+    expect(Array.from(result.stuffedBytes)).toEqual([0x41, BYTE_ESC, PPP_ESCAPED_FLAG, 0x42]);
+    expect(Array.from(result.stuffedBytes)).toEqual([0x41, 0x7d, 0x5e, 0x42]);
   });
 
-  it('escapes reserved ESC byte (0x7D) with ESC (0x7D)', () => {
+  it('implements RFC 1662 section 4.2: escapes ESC (0x7D) as [0x7D, 0x5D]', () => {
+    // 0x7D ^ 0x20 = 0x5D
+    expect(BYTE_ESC ^ ESC_XOR).toBe(0x5d);
+
     const data = [0x41, BYTE_ESC, 0x42]; // A, ESC, B
-    const result = stuffBytes(data);
+    const result = stuffBytes(data, { mode: ByteStuffingMode.RFC1662_PPP });
+
     expect(result.escapedCount).toBe(1);
-    expect(Array.from(result.stuffedBytes)).toEqual([0x41, BYTE_ESC, BYTE_ESC, 0x42]);
+    expect(Array.from(result.stuffedBytes)).toEqual([0x41, BYTE_ESC, PPP_ESCAPED_ESC, 0x42]);
+    expect(Array.from(result.stuffedBytes)).toEqual([0x41, 0x7d, 0x5d, 0x42]);
   });
 
-  it('escapes multiple occurrences of FLAG and ESC in succession', () => {
-    const data = [BYTE_FLAG, BYTE_ESC, BYTE_FLAG];
-    const result = stuffBytes(data);
-    expect(result.escapedCount).toBe(3);
+  it('correctly unstuffs RFC 1662 sequences via 0x20 bit-inversion', () => {
+    // [FLAG, A, 0x7D, 0x5E, B, 0x7D, 0x5D, FLAG]
+    const framed = new Uint8Array([BYTE_FLAG, 0x41, 0x7d, 0x5e, 0x42, 0x7d, 0x5d, BYTE_FLAG]);
+    const result = unstuffBytes(framed, true, { mode: ByteStuffingMode.RFC1662_PPP });
+
+    expect(result.hasError).toBe(false);
+    expect(result.removedEscapeCount).toBe(2);
+    expect(Array.from(result.destuffedBytes)).toEqual([0x41, BYTE_FLAG, 0x42, BYTE_ESC]);
+  });
+
+  it('supports Generic Educational Character Stuffing mode when explicitly selected', () => {
+    const data = [0x41, BYTE_FLAG, BYTE_ESC, 0x42];
+    const result = stuffBytes(data, { mode: ByteStuffingMode.GENERIC_ESCAPE });
+
+    expect(result.escapedCount).toBe(2);
+    // Generic mode maps 0x7E -> [0x7D, 0x7E] and 0x7D -> [0x7D, 0x7D]
     expect(Array.from(result.stuffedBytes)).toEqual([
+      0x41,
       BYTE_ESC,
       BYTE_FLAG,
       BYTE_ESC,
       BYTE_ESC,
-      BYTE_ESC,
-      BYTE_FLAG,
+      0x42,
     ]);
+
+    const unstuffed = unstuffBytes(result.framedBytes, true, {
+      mode: ByteStuffingMode.GENERIC_ESCAPE,
+    });
+    expect(unstuffed.hasError).toBe(false);
+    expect(Array.from(unstuffed.destuffedBytes)).toEqual(data);
   });
 
-  it('preserves raw byte sequences after stuffing and unstuffing round-trip', () => {
+  it('preserves raw byte sequences across RFC 1662 round-trip', () => {
     const testCases = [
       new Uint8Array([]),
       new Uint8Array([0x00, 0xff, 0x7f]),
@@ -187,7 +263,7 @@ describe('Byte Stuffing & Unstuffing', () => {
     }
   });
 
-  it('supports UTF-8 text including emojis and international characters', () => {
+  it('supports UTF-8 text including emojis and international characters in RFC 1662 mode', () => {
     const text = 'Networks ~ Network} Data Link 🚀';
     const bytes = textToBytes(text);
     const stuffed = stuffBytes(bytes);
@@ -199,25 +275,22 @@ describe('Byte Stuffing & Unstuffing', () => {
   });
 
   it('detects dangling ESC byte at the end of the frame', () => {
-    // Stuffed frame ending with ESC right before closing FLAG
     const invalidFrame = new Uint8Array([BYTE_FLAG, 0x41, BYTE_ESC, BYTE_FLAG]);
     const result = unstuffBytes(invalidFrame, true);
     expect(result.hasError).toBe(true);
     expect(result.errorMessage).toMatch(/Dangling ESC/i);
   });
 
-  it('detects invalid escape sequence where ESC is followed by non-reserved byte', () => {
-    // ESC followed by 0x41 ('A')
+  it('detects invalid RFC 1662 escape sequence where ESC is followed by an unexpected octet', () => {
+    // 0x7D followed by 0x41 ('A') instead of 0x5E or 0x5D
     const invalidFrame = new Uint8Array([BYTE_FLAG, BYTE_ESC, 0x41, BYTE_FLAG]);
-    const result = unstuffBytes(invalidFrame, true);
+    const result = unstuffBytes(invalidFrame, true, { mode: ByteStuffingMode.RFC1662_PPP });
     expect(result.hasError).toBe(true);
-    expect(result.errorMessage).toMatch(/Invalid escape sequence/i);
+    expect(result.errorMessage).toMatch(/Invalid RFC 1662 escape sequence/i);
   });
 
   it('detects unescaped FLAG byte inside payload', () => {
-    // Payload containing unescaped 0x7E
     const invalidFrame = new Uint8Array([BYTE_FLAG, 0x41, BYTE_FLAG, 0x42, BYTE_FLAG]);
-    // With hasFlags=true, first 0x7E and last 0x7E are flags, but middle 0x7E is unescaped
     const result = unstuffBytes(invalidFrame, true);
     expect(result.hasError).toBe(true);
     expect(result.errorMessage).toMatch(/Framing violation: Unescaped FLAG/i);
@@ -263,7 +336,6 @@ describe('Character-Count Framing', () => {
   });
 
   it('detects truncated frame where stream ends before claimed length', () => {
-    // Length header claims 6 bytes, but only 3 bytes provided
     const truncatedStream = new Uint8Array([6, 0x41, 0x42]);
     const result = decodeFrameStream(truncatedStream);
 
@@ -281,16 +353,6 @@ describe('Character-Count Framing', () => {
 
   it('demonstrates catastrophic framing desynchronization when a length byte is corrupted', () => {
     const payloads = ['DATA1', 'DATA2', 'DATA3'];
-    // Frame 0: 'DATA1' (len = 6: header 6, 5 bytes)
-    // Frame 1: 'DATA2' (len = 6: header 6, 5 bytes)
-    // Frame 2: 'DATA3' (len = 6: header 6, 5 bytes)
-    // Stream: [6, D, A, T, A, 1, 6, D, A, T, A, 2, 6, D, A, T, A, 3] (total 18 bytes)
-
-    // Corrupt Frame 0 length from 6 to 8:
-    // Receiver now expects Frame 0 to be 8 bytes long (reads 7 payload bytes!)
-    // It swallows: 'D','A','T','A','1', '6', 'D' as Frame 0 payload!
-    // Next header is read from byte offset 8 ('A' = 0x41 = 65 in decimal!)
-    // Receiver now attempts to read 65 bytes, causing an immediate framing desynchronization error!
     const sim = simulateLengthCorruption(payloads, 0, 8);
 
     expect(sim.hasDesynchronization).toBe(true);

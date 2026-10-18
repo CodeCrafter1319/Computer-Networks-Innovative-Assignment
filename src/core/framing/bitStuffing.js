@@ -203,15 +203,29 @@ export function destuffBits(receivedBits, hasFlags = true) {
         consecutiveOnes = 0;
         continue; // Skip appending the stuffed '0'
       } else {
-        // Six consecutive ones: check if it's an abort sequence (7 ones) or corrupt flag
-        if (i + 1 < bitsToProcess.length && bitsToProcess[i + 1] === '1') {
+        // Six consecutive ones detected in payload stream:
+        // In valid stuffed data, five 1s must be followed by a stuffed 0.
+        // Six consecutive 1s indicates an unescaped flag, an abort sequence, or channel noise.
+        const hasMoreBits = i + 1 < bitsToProcess.length;
+        const nextBit = hasMoreBits ? bitsToProcess[i + 1] : null;
+
+        if (nextBit === '1') {
           return {
             destuffedBits,
             removedCount,
             removedIndices,
             trace,
             hasError: true,
-            errorMessage: `Framing error / Abort sequence: detected seven consecutive '1's at index ${i}.`,
+            errorMessage: `Framing error / Abort sequence: detected seven or more consecutive '1's starting around index ${i - 5}.`,
+          };
+        } else if (nextBit === '0') {
+          return {
+            destuffedBits,
+            removedCount,
+            removedIndices,
+            trace,
+            hasError: true,
+            errorMessage: `Framing violation: Unescaped delimiter flag pattern (01111110) found inside payload at index ${i - 5}.`,
           };
         } else {
           return {
@@ -220,7 +234,7 @@ export function destuffBits(receivedBits, hasFlags = true) {
             removedIndices,
             trace,
             hasError: true,
-            errorMessage: `Unexpected delimiter flag (01111110) found inside payload without stuffing at index ${i}.`,
+            errorMessage: `Framing error: Stream ended with six consecutive '1's without required stuffed zero at index ${i}.`,
           };
         }
       }

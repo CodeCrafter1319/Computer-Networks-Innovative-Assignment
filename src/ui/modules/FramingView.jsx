@@ -10,6 +10,10 @@ import {
 import {
   BYTE_FLAG,
   BYTE_ESC,
+  ESC_XOR,
+  PPP_ESCAPED_FLAG,
+  PPP_ESCAPED_ESC,
+  ByteStuffingMode,
   stuffBytes,
   unstuffBytes,
   textToBytes,
@@ -41,6 +45,7 @@ export default function FramingView() {
 
   // Byte stuffing state
   const [byteTextInput, setByteTextInput] = useState('Data~Link}Protocol~2026');
+  const [byteMode, setByteMode] = useState(ByteStuffingMode.RFC1662_PPP);
   const [injectByteError, setInjectByteError] = useState(false);
 
   // Character count state
@@ -110,19 +115,29 @@ export default function FramingView() {
   const byteResult = useMemo(() => {
     try {
       const rawBytes = textToBytes(byteTextInput);
-      const stuffed = stuffBytes(rawBytes);
+      const stuffed = stuffBytes(rawBytes, { mode: byteMode });
 
       let receivedBytes = new Uint8Array(stuffed.framedBytes);
       if (injectByteError) {
-        // Corrupt by introducing a dangling ESC right before the end flag
-        const corrupt = new Uint8Array(stuffed.framedBytes.length + 1);
-        corrupt.set(stuffed.framedBytes.slice(0, -1), 0);
-        corrupt[corrupt.length - 2] = BYTE_ESC; // Insert dangling ESC
-        corrupt[corrupt.length - 1] = BYTE_FLAG;
-        receivedBytes = corrupt;
+        if (byteMode === ByteStuffingMode.RFC1662_PPP) {
+          // In RFC 1662 mode, insert an invalid escaped octet 0x41 ('A') following ESC
+          const corrupt = new Uint8Array(stuffed.framedBytes.length + 2);
+          corrupt.set(stuffed.framedBytes.slice(0, -1), 0);
+          corrupt[corrupt.length - 3] = BYTE_ESC;
+          corrupt[corrupt.length - 2] = 0x41; // Invalid octet (not 0x5E or 0x5D)
+          corrupt[corrupt.length - 1] = BYTE_FLAG;
+          receivedBytes = corrupt;
+        } else {
+          // In generic mode, insert a dangling ESC right before the end flag
+          const corrupt = new Uint8Array(stuffed.framedBytes.length + 1);
+          corrupt.set(stuffed.framedBytes.slice(0, -1), 0);
+          corrupt[corrupt.length - 2] = BYTE_ESC;
+          corrupt[corrupt.length - 1] = BYTE_FLAG;
+          receivedBytes = corrupt;
+        }
       }
 
-      const destuffed = unstuffBytes(receivedBytes, true);
+      const destuffed = unstuffBytes(receivedBytes, true, { mode: byteMode });
 
       let decodedText = null;
       if (!destuffed.hasError) {
@@ -133,7 +148,9 @@ export default function FramingView() {
         }
       }
 
-      const match = !destuffed.hasError && bytesToHexString(rawBytes) === bytesToHexString(destuffed.destuffedBytes);
+      const match =
+        !destuffed.hasError &&
+        bytesToHexString(rawBytes) === bytesToHexString(destuffed.destuffedBytes);
 
       return {
         rawBytes,
@@ -142,14 +159,15 @@ export default function FramingView() {
         destuffed,
         decodedText,
         match,
-        overheadPct: rawBytes.length > 0
-          ? (((stuffed.framedBytes.length - rawBytes.length) / rawBytes.length) * 100).toFixed(1)
-          : '0',
+        overheadPct:
+          rawBytes.length > 0
+            ? (((stuffed.framedBytes.length - rawBytes.length) / rawBytes.length) * 100).toFixed(1)
+            : '0',
       };
     } catch (err) {
       return { error: err.message };
     }
-  }, [byteTextInput, injectByteError]);
+  }, [byteTextInput, byteMode, injectByteError]);
 
   // ==========================================
   // CHARACTER COUNT COMPUTATIONS
@@ -256,7 +274,16 @@ export default function FramingView() {
                     setBitInput('01111110'); // Exact flag collision
                   }}
                 >
-                  Raw Flag Collision (01111110)
+                  Single Flag (01111110)
+                </button>
+                <button
+                  className="sample-chip"
+                  onClick={() => {
+                    setIsBitTextMode(false);
+                    setBitInput('0111111001111110'); // Double flag
+                  }}
+                >
+                  Double Flag Collision
                 </button>
                 <button
                   className="sample-chip"
@@ -271,10 +298,10 @@ export default function FramingView() {
                   className="sample-chip"
                   onClick={() => {
                     setIsBitTextMode(false);
-                    setBitInput('1111111111'); // Ten consecutive 1s
+                    setBitInput('111111111111111'); // 15 consecutive 1s
                   }}
                 >
-                  Ten Consecutive 1s
+                  15 Consecutive 1s
                 </button>
                 <button
                   className="sample-chip"
@@ -483,13 +510,47 @@ export default function FramingView() {
       {technique === TECHNIQUES.BYTE_STUFFING && (
         <div>
           <div className="card">
-            <div className="card-header">
-              <h2 className="card-title">PPP / Byte Stuffing & Unstuffing Simulator</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                FLAG Byte = <code style={{ color: 'var(--accent-amber)' }}>0x7E</code> (126, '~') |
-                ESC Byte = <code style={{ color: 'var(--accent-purple)' }}>0x7D</code> (125, {'\'}\''}) |
-                Any occurrence of FLAG or ESC in the payload is preceded by an ESC byte.
-              </p>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h2 className="card-title">
+                  {byteMode === ByteStuffingMode.RFC1662_PPP
+                    ? 'RFC 1662 PPP Octet Stuffing Simulator (Standard)'
+                    : 'Generic Educational Character Stuffing Simulator'}
+                </h2>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  FLAG = <code style={{ color: 'var(--accent-amber)' }}>0x7E</code> (126, '~') |
+                  ESC = <code style={{ color: 'var(--accent-purple)' }}>0x7D</code> (125, {'\'}\''})
+                  {byteMode === ByteStuffingMode.RFC1662_PPP ? (
+                    <span>
+                      {' '} | RFC 1662 XOR 0x20 Rule: <code style={{ color: 'var(--accent-cyan)' }}>0x7E &rarr; 0x7D 0x5E</code>, <code style={{ color: 'var(--accent-cyan)' }}>0x7D &rarr; 0x7D 0x5D</code>
+                    </span>
+                  ) : (
+                    <span>
+                      {' '} | Generic Rule: <code style={{ color: 'var(--accent-cyan)' }}>0x7E &rarr; 0x7D 0x7E</code>, <code style={{ color: 'var(--accent-cyan)' }}>0x7D &rarr; 0x7D 0x7D</code>
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              {/* Mode Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Convention:</span>
+                <select
+                  value={byteMode}
+                  onChange={(e) => setByteMode(e.target.value)}
+                  style={{
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-subtle)',
+                    padding: '0.4rem 0.6rem',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <option value={ByteStuffingMode.RFC1662_PPP}>RFC 1662 PPP Standard (0x5E / 0x5D)</option>
+                  <option value={ByteStuffingMode.GENERIC_ESCAPE}>Generic Educational (0x7E / 0x7D)</option>
+                </select>
+              </div>
             </div>
 
             <div className="form-group">
@@ -538,7 +599,9 @@ export default function FramingView() {
                   onChange={(e) => setInjectByteError(e.target.checked)}
                 />
                 <span style={{ color: injectByteError ? 'var(--accent-rose)' : 'inherit' }}>
-                  Inject Dangling ESC Error
+                  {byteMode === ByteStuffingMode.RFC1662_PPP
+                    ? 'Inject Invalid RFC 1662 Escape (0x7D 0x41)'
+                    : 'Inject Dangling ESC Error'}
                 </span>
               </label>
               <button
@@ -901,6 +964,11 @@ export default function FramingView() {
             <div className="viva-q">Q4: What is the maximum overhead of Bit Stuffing?</div>
             <div className="viva-a">
               In the worst-case scenario where the user payload consists entirely of <code>1</code> bits, a <code>0</code> bit must be stuffed after every five 1s. This yields an overhead of 1 bit per 5 payload bits, or exactly <strong>20% (1/5)</strong> payload expansion, plus the 16-bit opening and closing flag delimiters.
+            </div>
+
+            <div className="viva-q">Q5: How does PPP octet stuffing (RFC 1662) differ from generic character stuffing?</div>
+            <div className="viva-a">
+              Under <strong>RFC 1662 Section 4.2</strong>, PPP escapes reserved octets by transmitting Control Escape (<code>0x7D</code>) followed by the octet with bit 5 inverted (<code>XOR 0x20</code>). Thus, FLAG (<code>0x7E</code>) becomes <code>[0x7D, 0x5E]</code> and ESC (<code>0x7D</code>) becomes <code>[0x7D, 0x5D]</code>. Generic character stuffing simply prefixes the reserved character with ESC (<code>[0x7D, 0x7E]</code> and <code>[0x7D, 0x7D]</code>). The RFC 1662 bit-inversion technique transforms escaped characters into printable ASCII characters, ensuring transparent transmission over asynchronous serial links.
             </div>
           </div>
         )}
