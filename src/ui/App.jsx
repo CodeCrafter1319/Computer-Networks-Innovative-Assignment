@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import FramingView from './modules/FramingView.jsx';
+import ErrorControlView from './modules/ErrorControlView.jsx';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('framing');
+  const [activeTab, setActiveTab] = useState('error-control');
 
   return (
     <div className="app-container">
@@ -10,12 +11,12 @@ export default function App() {
         <div className="app-title-group">
           <h1>
             <span>Data Link Layer Protocol Simulator</span>
-            <span className="badge badge-info">v0.2.0</span>
+            <span className="badge badge-info">v0.3.0</span>
           </h1>
           <p>Computer Networks Innovative Assignment — Semester V</p>
         </div>
         <div>
-          <span className="badge badge-success">Phase 4: Framing Simulator Active</span>
+          <span className="badge badge-success">Phase 5: Error Control & CRC Active</span>
         </div>
       </header>
 
@@ -29,6 +30,13 @@ export default function App() {
           <span>Framing Simulator</span>
         </button>
         <button
+          className={`nav-tab ${activeTab === 'error-control' ? 'active' : ''}`}
+          onClick={() => setActiveTab('error-control')}
+        >
+          <span>🛡️</span>
+          <span>Error Control & CRC</span>
+        </button>
+        <button
           className={`nav-tab ${activeTab === 'overview' ? 'active' : ''}`}
           onClick={() => setActiveTab('overview')}
         >
@@ -39,6 +47,7 @@ export default function App() {
 
       <main className="app-main">
         {activeTab === 'framing' && <FramingView />}
+        {activeTab === 'error-control' && <ErrorControlView />}
 
         {activeTab === 'overview' && (
           <div>
@@ -52,7 +61,7 @@ export default function App() {
                 unit tests for Framing, Error Control, Flow Control, and Medium Access.
               </p>
               <div className="mono-display">
-                Status: Framing Module Verified | Package Manager: pnpm | Runtime: Vite + React + Vitest
+                Status: Framing & Error Control Verified | Package Manager: pnpm | Runtime: Vite + React + Vitest (92 tests)
               </div>
             </div>
 
@@ -67,10 +76,11 @@ export default function App() {
                     Bit Stuffing, Byte Stuffing, Character Count
                   </li>
                   <li>
-                    <strong>Error Control (Phase 5 Next):</strong> Modulo-2 CRC, Internet Checksum, Parity
+                    <strong style={{ color: 'var(--accent-emerald)' }}>✓ Error Control (Phase 5 Complete):</strong>{' '}
+                    Modulo-2 CRC, Named Variants (SMBus/CCITT), Internet Checksum, 1D & 2D Parity
                   </li>
                   <li>
-                    <strong>Flow Control (Phase 6):</strong> Stop-and-Wait ARQ, Go-Back-N, Selective Repeat
+                    <strong>Flow Control (Phase 6 Next):</strong> Stop-and-Wait ARQ, Go-Back-N, Selective Repeat
                   </li>
                   <li>
                     <strong>Medium Access (Phase 7):</strong> CSMA/CD Bus Contention & Exponential Backoff

@@ -42,19 +42,20 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 1: Project Planning & Requirements Analysis** (Approved)
 - [x] **Phase 2: Project Foundation, Git Setup & Tracking Documentation** (Vite + React + Vitest initialized, `.gitignore` created, test runner operational)
 - [x] **Phase 3: Discrete-Event Simulation Engine Core** (`EventQueue.js`, `SimulationEngine.js`, `Channel.js`, and comprehensive unit tests in `src/tests/engine.test.js` passing)
-- [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js` with RFC 1662 & generic modes, `charCount.js`, `FramingView.jsx`, and 34 unit tests in `src/tests/framing.test.js` passing; 58 tests total across suite)
+- [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js` with RFC 1662 & generic modes, `charCount.js`, `FramingView.jsx`, and 34 unit tests in `src/tests/framing.test.js` passing)
+- [x] **Phase 5: Error Control Algorithms & Step-by-Step CRC Visualizer** (`crc.js` with educational modulo-2 division and named variants CRC-8/SMBUS & CRC-16/CCITT-FALSE, `checksum.js` with RFC 1071 16-bit 1's complement, `parity.js` with 1D/2D parity and single-bit localization, `errorInjection.js`, `ErrorControlView.jsx`, and 34 unit tests in `src/tests/errorControl.test.js` passing; 92 tests total across suite)
 
 ---
 
 ## 5. Known Issues
-- None. RFC 1662 PPP octet stuffing (including transparent bit-inversion and abort sequences), generic byte stuffing, bit stuffing with raw flag payloads, and character-count length framing algorithms execute correctly with 100% test pass rate (58/58 tests passing).
+- None. All framing algorithms, educational modulo-2 division, named CRC variants (SMBus check 0xF4, CCITT-FALSE check 0x29B1), RFC 1071 16-bit Internet checksum, and 1D/2D parity modules execute with 100% test pass rate (92/92 tests passing).
 
 ---
 
 ## 6. Exact Next Step
-- **Phase 5: Error Control & Step-by-Step CRC Visualizer**
-  - Implement `src/core/error-control/crc.js` (Modulo-2 polynomial division, remainder FCS calculation, standard generators: CRC-8, CRC-16-CCITT, bitwise step-by-step XOR division trace).
-  - Implement `src/core/error-control/checksum.js` (16-bit 1's complement addition and verification).
-  - Implement `src/core/error-control/parity.js` (1D and 2D even/odd parity matrix calculation and error detection).
-  - Create `src/tests/errorControl.test.js` covering known textbook polynomial division vectors, burst error detection bounds, and single/multi-bit error detection.
-  - Build interactive `ErrorControlView.jsx` with an interactive division trace table and channel error injection.
+- **Phase 6: Flow Control — ARQ Protocols & Sliding Window Visualizer**
+  - Implement Stop-and-Wait ARQ (`src/core/flow-control/stopAndWait.js` with 1-bit sequence number 0/1, ACK timeouts, frame loss, and duplicate suppression).
+  - Implement Go-Back-N ARQ (`src/core/flow-control/goBackN.js` with sliding window $[S_f, S_n)$, cumulative ACKs, and timer management).
+  - Implement Selective Repeat ARQ (`src/core/flow-control/selectiveRepeat.js` with receiver buffer, negative ACKs / individual ACK tracking, and independent timers).
+  - Write comprehensive Vitest test suites in `src/tests/flowControl.test.js` simulating timeouts, lost ACKs, out-of-order delivery, and window wraparound.
+  - Build interactive `FlowControlView.jsx` with animated multi-lane channel, packet-in-flight transitions, and click-to-corrupt / click-to-drop controls.

@@ -233,34 +233,49 @@ export class Channel {
     if (typeof frame === 'object' && frame !== null) {
       frame.corrupted = true;
 
-      // If bitIndex is specified and frame has a payload/data bit string
+      const burstLen = typeof fault.burstLength === 'number' && fault.burstLength > 0 ? fault.burstLength : 1;
+
+      // Helper to flip bits in a string field
+      const flipField = (fieldStr, startIdx, len) => {
+        const safeStart = Math.min(Math.max(0, startIdx), fieldStr.length - 1);
+        const safeEnd = Math.min(fieldStr.length, safeStart + len);
+        let res = fieldStr.substring(0, safeStart);
+        for (let i = safeStart; i < safeEnd; i++) {
+          res += fieldStr[i] === '1' ? '0' : '1';
+        }
+        res += fieldStr.substring(safeEnd);
+        return res;
+      };
+
+      // Corrupt payload or data field
       if (typeof frame.data === 'string' && frame.data.length > 0) {
-        const bitIdx =
-          typeof fault.bitIndex === 'number'
-            ? Math.min(Math.max(0, fault.bitIndex), frame.data.length - 1)
-            : 0;
-        const currentBit = frame.data[bitIdx];
-        const flippedBit = currentBit === '1' ? '0' : '1';
-        frame.data =
-          frame.data.substring(0, bitIdx) + flippedBit + frame.data.substring(bitIdx + 1);
+        const start = typeof fault.bitIndex === 'number' ? fault.bitIndex : 0;
+        frame.data = flipField(frame.data, start, burstLen);
       } else if (typeof frame.payload === 'string' && frame.payload.length > 0) {
-        const bitIdx =
-          typeof fault.bitIndex === 'number'
-            ? Math.min(Math.max(0, fault.bitIndex), frame.payload.length - 1)
-            : 0;
-        const currentBit = frame.payload[bitIdx];
-        const flippedBit = currentBit === '1' ? '0' : '1';
-        frame.payload =
-          frame.payload.substring(0, bitIdx) + flippedBit + frame.payload.substring(bitIdx + 1);
+        const start = typeof fault.bitIndex === 'number' ? fault.bitIndex : 0;
+        frame.payload = flipField(frame.payload, start, burstLen);
+      }
+
+      // Corrupt codeword if present
+      if (typeof frame.codeword === 'string' && frame.codeword.length > 0) {
+        const start = typeof fault.bitIndex === 'number' ? fault.bitIndex : 0;
+        frame.codeword = flipField(frame.codeword, start, burstLen);
+      }
+
+      // Corrupt isolated FCS field if specified
+      if (typeof frame.fcs === 'string' && frame.fcs.length > 0 && typeof fault.fcsBitIndex === 'number') {
+        frame.fcs = flipField(frame.fcs, fault.fcsBitIndex, 1);
       }
     } else if (typeof frame === 'string') {
-      const bitIdx =
-        typeof fault.bitIndex === 'number'
-          ? Math.min(Math.max(0, fault.bitIndex), frame.length - 1)
-          : 0;
-      const currentBit = frame[bitIdx];
-      const flippedBit = currentBit === '1' ? '0' : '1';
-      return frame.substring(0, bitIdx) + flippedBit + frame.substring(bitIdx + 1);
+      const burstLen = typeof fault.burstLength === 'number' && fault.burstLength > 0 ? fault.burstLength : 1;
+      const start = typeof fault.bitIndex === 'number' ? Math.min(Math.max(0, fault.bitIndex), frame.length - 1) : 0;
+      const safeEnd = Math.min(frame.length, start + burstLen);
+      let res = frame.substring(0, start);
+      for (let i = start; i < safeEnd; i++) {
+        res += frame[i] === '1' ? '0' : '1';
+      }
+      res += frame.substring(safeEnd);
+      return res;
     }
 
     return frame;

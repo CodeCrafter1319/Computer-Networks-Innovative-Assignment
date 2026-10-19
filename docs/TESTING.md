@@ -98,6 +98,50 @@ All networking logic in this project is developed under strict test-driven valid
 
 **Summary:** 3 files, 58 tests passed, 0 failed.
 
+### Phase 5: Error Control & Step-by-Step CRC Visualizer
+- **Date:** 2026-10-19
+- **Test Runner:** Vitest v3.2.7 (Node environment)
+- **Command:** `pnpm test`
+
+| Test Suite | Test Case Description | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `src/tests/errorControl.test.js` | Binary bit string validator | Validates strings of '0'/'1', rejects empty and non-binary | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Generator polynomial validator | Validates degree $\ge 1$, starts and ends with '1' | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Bitwise XOR helper | Exact bit-by-bit XOR on equal length binary strings | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Textbook Modulo-2 division | Message `1101011011`, poly `10011` yields 4-bit FCS, receiver remainder `0000` | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Single-bit error detection (CRC) | Flipped bit produces non-zero remainder, caught by receiver | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Burst error detection (CRC-8) | Burst of 4 consecutive bit flips caught by degree-8 polynomial | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | UTF-8 text message CRC | Multi-byte string converted to bits, divided, verified clean | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Codeword length validation | Received codeword shorter than generator degree rejected safely | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | CRC-8/SMBUS standard check vector | Check string `"123456789"` produces exact check value `0xF4` | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | CRC-16/CCITT-FALSE check vector | Check string `"123456789"` produces exact check value `0x29B1` | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Named CRC intact verification | Intact payload and FCS match under recomputed check | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Named CRC payload corruption | Corrupted payload detected via FCS mismatch | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Named CRC FCS corruption | Corrupted received FCS detected even when payload is intact | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Uint8Array named CRC handling | Binary byte buffer processed and verified without type issues | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Checksum 16-bit word extraction | Big-endian conversion and odd-length padding on right with 0x00 | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Checksum even-length input | Payload `"ABCD"` produces sum `0x8486` and checksum `0x7B79` | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Checksum odd-length input | Payload `"ABCDE"` produces sum `0xC986` and checksum `0x3679` | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | End-around carry folding | Accumulator overflow correctly folds carry into 16-bit sum | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Checksum receiver verification | Receiver sum of payload words + checksum word equals `0xFFFF` | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Checksum payload corruption | Flipped byte in payload causes receiver sum $\ne$ `0xFFFF` | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Checksum field corruption | Tampered checksum word causes receiver sum $\ne$ `0xFFFF` | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Empty payload checksum | Empty input yields checksum `0xFFFF` per RFC convention | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Bit 1-count helper | Correctly counts total 1-bits in string or array | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | 1D Even & Odd parity generation | Generates correct parity bits for even and odd counts | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | 1D single-bit error detection | Inverted data or parity bit fails parity check | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | 1D two-bit error evasion | Two bit flips cancel out in parity (undetected error demonstration) | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | 2D matrix parity calculation | $4 \times 4$ matrix with row, column, and corner parities verified intact | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | 2D single-bit localization | Single flipped bit localized to exact row & column intersection $(r, c)$ | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | 2D row parity bit error | Mismatched row parity localized without mutating data matrix | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | 2D multi-bit error ambiguity | 2-bit error in same row detected but flagged as ambiguous | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Error injection single bit flip | Flips designated bit and generates exact error mask | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Error injection burst flip | Flips $B$ contiguous bits and generates exact error mask | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Error injection field isolation | Corrupts payload vs FCS independently or together | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | Channel burst corruption | Transmits frame through Channel with burst corruption directive | Pass | **PASS** |
+
+**Summary:** 4 files, 92 tests passed, 0 failed.
+
 ---
 
 ## 3. Failed Tests Log

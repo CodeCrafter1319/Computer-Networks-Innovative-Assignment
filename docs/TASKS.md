@@ -1,9 +1,9 @@
 # TASKS.md — Project Task Tracker
 
 ## 1. Current Status Overview
-- **Active Phase:** Phase 4 Complete (Awaiting User Sign-off to advance to Phase 5)
-- **Current Task:** Verification of Framing Algorithms & Interactive Visualizer
-- **Next Task:** Phase 5 — Error Control & Step-by-Step CRC Visualizer
+- **Active Phase:** Phase 5 Complete (Awaiting User Sign-off to advance to Phase 6)
+- **Current Task:** Verification of Error Control Algorithms & Step-by-Step CRC Visualizer
+- **Next Task:** Phase 6 — Flow Control — ARQ Protocols & Sliding Window Visualizer
 
 ---
 
@@ -25,20 +25,20 @@
 - [x] **Task 4.1:** Implement pure Bit Stuffing and Destuffing algorithms (`01111110` flag, zero-insertion after five `1`s, trace generation, abort sequence detection).
 - [x] **Task 4.2:** Implement Byte Stuffing and Unstuffing (RFC 1662 section 4.2 PPP octet stuffing standard `0x7E -> [0x7D, 0x5E]` and `0x7D -> [0x7D, 0x5D]`, plus Generic Educational Escape mode).
 - [x] **Task 4.3:** Implement Character-Count framing with total length header, multi-frame streaming, and desynchronization simulation.
-- [x] **Task 4.4:** Write Vitest unit tests in `src/tests/framing.test.js` (30 tests covering boundary conditions, raw flag payloads, RFC 1662 escaping, and error states).
+- [x] **Task 4.4:** Write Vitest unit tests in `src/tests/framing.test.js` (34 tests covering boundary conditions, raw flag payloads, RFC 1662 escaping, and error states).
 - [x] **Task 4.5:** Build interactive `FramingView.jsx` with pipeline visualization, live bit/byte rendering, presets, error injection, convention toggle, and Viva Helper panel.
 - [x] **Task 4.6:** Technical audit verification of byte stuffing standards (RFC 1662 Sec 4.2 transparent $0\text{x}20$ decoding, abort sequences `0x7D 0x7E`, strict minimum escape option, and raw flag collision protection; 34 framing tests passing).
+- [x] **Task 5.1:** Implement Modulo-2 polynomial division with full intermediate XOR traces (`src/core/error-control/crc.js`).
+- [x] **Task 5.2:** Implement standard named CRC variants (`CRC-8/SMBUS` check `0xF4`, `CRC-16/CCITT-FALSE` check `0x29B1`) with per-bit register update traces.
+- [x] **Task 5.3:** Implement 16-bit Internet Checksum (RFC 1071 with odd zero-pad, end-around carry folding, receiver sum $0\text{xFFFF}$) (`src/core/error-control/checksum.js`).
+- [x] **Task 5.4:** Implement 1D even/odd parity and 2D matrix parity with single-bit error localization and multi-bit evasion demonstration (`src/core/error-control/parity.js`).
+- [x] **Task 5.5:** Implement deterministic controlled error injection (`src/core/error-control/errorInjection.js`) and enhance `Channel.js` with burst and field corruption.
+- [x] **Task 5.6:** Write comprehensive Vitest unit tests in `src/tests/errorControl.test.js` (34 tests covering known vectors, bursts, 2-bit evasion, and channel integration; 92 tests passing across suite).
+- [x] **Task 5.7:** Build interactive `ErrorControlView.jsx` with step-by-step long division table, register shift log, interactive 2D grid cell toggling, error injection controls, and Viva Helper panel.
 
 ---
 
 ## 3. Pending Tasks (Roadmap)
-
-### Phase 5: Error Control & Modulo-2 Division Visualizer
-- [ ] **Task 5.1:** Implement Modulo-2 polynomial division with full intermediate XOR traces.
-- [ ] **Task 5.2:** Implement standard CRC generators (CRC-8, CRC-16-CCITT).
-- [ ] **Task 5.3:** Implement Internet Checksum (16-bit 1's complement sum) and Simple/2D Parity.
-- [ ] **Task 5.4:** Write unit tests for CRC against known textbook vectors and burst-error detection.
-- [ ] **Task 5.5:** Build interactive CRC Division Step-by-Step UI and Channel Fault Injector.
 
 ### Phase 6: Flow Control — ARQ Protocols & Sliding Window Visualizer
 - [ ] **Task 6.1:** Implement Stop-and-Wait ARQ state machine with sequence bit ($0/1$), ACK, timeout, and duplicate detection.
