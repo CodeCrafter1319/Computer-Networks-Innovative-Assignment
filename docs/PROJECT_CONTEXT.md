@@ -43,12 +43,12 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 2: Project Foundation, Git Setup & Tracking Documentation** (Vite + React + Vitest initialized, `.gitignore` created, test runner operational)
 - [x] **Phase 3: Discrete-Event Simulation Engine Core** (`EventQueue.js`, `SimulationEngine.js`, `Channel.js`, and comprehensive unit tests in `src/tests/engine.test.js` passing)
 - [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js` with RFC 1662 & generic modes, `charCount.js`, `FramingView.jsx`, and 34 unit tests in `src/tests/framing.test.js` passing)
-- [x] **Phase 5: Error Control Algorithms & Step-by-Step CRC Visualizer** (`crc.js` with educational modulo-2 division and named variants CRC-8/SMBUS & CRC-16/CCITT-FALSE, `checksum.js` with RFC 1071 16-bit 1's complement, `parity.js` with 1D/2D parity and single-bit localization, `errorInjection.js`, `ErrorControlView.jsx`, and 34 unit tests in `src/tests/errorControl.test.js` passing; 92 tests total across suite)
+- [x] **Phase 5: Error Control Algorithms & Step-by-Step CRC Visualizer** (`crc.js` with educational modulo-2 division and named variants CRC-8/SMBUS & CRC-16/CCITT-FALSE, `checksum.js` with RFC 1071 16-bit 1's complement, `parity.js` with 1D/2D parity and single-bit localization, `errorInjection.js`, `ErrorControlView.jsx`, and 36 unit tests in `src/tests/errorControl.test.js` passing; 94 tests total across suite)
 
 ---
 
 ## 5. Known Issues
-- None. All framing algorithms, educational modulo-2 division, named CRC variants (SMBus check 0xF4, CCITT-FALSE check 0x29B1), RFC 1071 16-bit Internet checksum, and 1D/2D parity modules execute with 100% test pass rate (92/92 tests passing).
+- None. All framing algorithms, educational modulo-2 division, named CRC variants (SMBus check 0xF4, CCITT-FALSE check 0x29B1), RFC 1071 16-bit Internet checksum, and 1D/2D parity modules execute with 100% test pass rate (94/94 tests passing). Component rendering verified.
 
 ---
 

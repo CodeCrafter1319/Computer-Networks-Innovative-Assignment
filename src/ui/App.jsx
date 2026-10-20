@@ -61,7 +61,7 @@ export default function App() {
                 unit tests for Framing, Error Control, Flow Control, and Medium Access.
               </p>
               <div className="mono-display">
-                Status: Framing & Error Control Verified | Package Manager: pnpm | Runtime: Vite + React + Vitest (92 tests)
+                Status: Framing & Error Control Verified | Package Manager: pnpm | Runtime: Vite + React + Vitest (94 tests)
               </div>
             </div>
 

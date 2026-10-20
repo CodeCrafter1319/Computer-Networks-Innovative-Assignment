@@ -33,8 +33,8 @@
 - [x] **Task 5.3:** Implement 16-bit Internet Checksum (RFC 1071 with odd zero-pad, end-around carry folding, receiver sum $0\text{xFFFF}$) (`src/core/error-control/checksum.js`).
 - [x] **Task 5.4:** Implement 1D even/odd parity and 2D matrix parity with single-bit error localization and multi-bit evasion demonstration (`src/core/error-control/parity.js`).
 - [x] **Task 5.5:** Implement deterministic controlled error injection (`src/core/error-control/errorInjection.js`) and enhance `Channel.js` with burst and field corruption.
-- [x] **Task 5.6:** Write comprehensive Vitest unit tests in `src/tests/errorControl.test.js` (34 tests covering known vectors, bursts, 2-bit evasion, and channel integration; 92 tests passing across suite).
-- [x] **Task 5.7:** Build interactive `ErrorControlView.jsx` with step-by-step long division table, register shift log, interactive 2D grid cell toggling, error injection controls, and Viva Helper panel.
+- [x] **Task 5.6:** Write comprehensive Vitest unit tests in `src/tests/errorControl.test.js` (36 tests covering known vectors, bursts, 2-bit evasion, and UI component rendering; 94 tests passing across suite).
+- [x] **Task 5.7:** Build interactive `ErrorControlView.jsx` with step-by-step long division table, register shift log, interactive 2D grid cell toggling, error injection controls, and Viva Helper panel (resolved LaTeX math `{-(R-1)}` JSX ReferenceError).
 
 ---
 

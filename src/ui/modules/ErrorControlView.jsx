@@ -1797,30 +1797,30 @@ export default function ErrorControlView() {
 
             <div className="viva-q">Q2: How does Modulo-2 polynomial division differ from ordinary integer division?</div>
             <div className="viva-a">
-              Modulo-2 division is performed in the Galois field <strong>GF(2)</strong>. There are <strong>no carries</strong> in addition and <strong>no borrows</strong> in subtraction. Both addition and subtraction are mathematically identical and equivalent to the bitwise <strong>XOR</strong> operation ($0 \oplus 0 = 0$, $0 \oplus 1 = 1$, $1 \oplus 0 = 1$, $1 \oplus 1 = 0$). When the leftmost bit of the active window is 1, we XOR with the generator polynomial; when it is 0, we simply advance.
+              Modulo-2 division is performed in the Galois field <strong>GF(2)</strong>. There are <strong>no carries</strong> in addition and <strong>no borrows</strong> in subtraction. Both addition and subtraction are mathematically identical and equivalent to the bitwise <strong>XOR</strong> operation (0 ⊕ 0 = 0, 0 ⊕ 1 = 1, 1 ⊕ 0 = 1, 1 ⊕ 1 = 0). When the leftmost bit of the active window is 1, we XOR with the generator polynomial; when it is 0, we simply advance.
             </div>
 
             <div className="viva-q">Q3: What types of transmission errors are guaranteed to be detected by a CRC of degree R?</div>
             <div className="viva-a">
-              A CRC polynomial of degree $R$ with a non-zero constant term ($x^0 = 1$) guarantees:
+              A CRC polynomial of degree <em>R</em> with a non-zero constant term (<em>x</em><sup>0</sup> = 1) guarantees:
               <ul style={{ paddingLeft: '1.25rem', marginTop: '0.4rem', lineHeight: '1.6' }}>
                 <li>All <strong>single-bit errors</strong>.</li>
-                <li>All <strong>double-bit errors</strong> as long as the generator does not divide $x^k + 1$ for any $k \le$ frame length.</li>
-                <li>Any <strong>odd number of bit errors</strong>, provided the polynomial contains $(x + 1)$ as a factor.</li>
-                <li>All <strong>burst errors of length $\le R$</strong> bits.</li>
-                <li>A burst error of length $R + 1$ with probability $1 - 2^{-(R - 1)}$.</li>
-                <li>Longer burst errors with probability $1 - 2^{-R}$ (e.g. 99.998% detection for CRC-16).</li>
+                <li>All <strong>double-bit errors</strong> as long as the generator does not divide <em>x</em><sup><em>k</em></sup> + 1 for any <em>k</em> &le; frame length.</li>
+                <li>Any <strong>odd number of bit errors</strong>, provided the polynomial contains (<em>x</em> + 1) as a factor.</li>
+                <li>All <strong>burst errors of length &le; <em>R</em></strong> bits.</li>
+                <li>A burst error of length <em>R</em> + 1 with probability 1 - 2<sup>-(<em>R</em> - 1)</sup>.</li>
+                <li>Longer burst errors with probability 1 - 2<sup>-<em>R</em></sup> (e.g. 99.998% detection for CRC-16).</li>
               </ul>
             </div>
 
             <div className="viva-q">Q4: Why does the 16-bit Internet Checksum sum to 0xFFFF at the receiver instead of 0x0000?</div>
             <div className="viva-a">
-              The Internet Checksum (RFC 1071) uses <strong>one's-complement arithmetic</strong>. In one's complement, the negative of a number $S$ is its bitwise complement $\sim S$. When the transmitter sums all payload words to get $S$, it transmits the checksum $C = \sim S$. At the receiver, summing all payload words plus $C$ computes $S + \sim S$. In one's complement addition, adding any number to its bitwise complement always results in all 1s (<code>0xFFFF</code>, which represents negative zero in one's complement).
+              The Internet Checksum (RFC 1071) uses <strong>one's-complement arithmetic</strong>. In one's complement, the negative of a number <em>S</em> is its bitwise complement ~<em>S</em>. When the transmitter sums all payload words to get <em>S</em>, it transmits the checksum <em>C</em> = ~<em>S</em>. At the receiver, summing all payload words plus <em>C</em> computes <em>S</em> + ~<em>S</em>. In one's complement addition, adding any number to its bitwise complement always results in all 1s (<code>0xFFFF</code>, which represents negative zero in one's complement).
             </div>
 
             <div className="viva-q">Q5: Why can 2D Parity localize and correct a single-bit error, but fails on general multi-bit errors?</div>
             <div className="viva-a">
-              In Two-Dimensional Parity, a single flipped data bit causes exactly <strong>one row parity mismatch</strong> and <strong>one column parity mismatch</strong>. The intersection $(r, c)$ uniquely pinpoints the faulty bit, enabling single-bit correction. However, if two bits in the same row are flipped, the row parity is unchanged (two flips cancel in modulo-2 arithmetic), but two columns report errors. The receiver knows an error occurred, but cannot determine which rows were affected. Furthermore, a <strong>4-bit rectangular flip pattern</strong> leaves all row and column parities untouched, escaping detection completely.
+              In Two-Dimensional Parity, a single flipped data bit causes exactly <strong>one row parity mismatch</strong> and <strong>one column parity mismatch</strong>. The intersection (<em>r</em>, <em>c</em>) uniquely pinpoints the faulty bit, enabling single-bit correction. However, if two bits in the same row are flipped, the row parity is unchanged (two flips cancel in modulo-2 arithmetic), but two columns report errors. The receiver knows an error occurred, but cannot determine which rows were affected. Furthermore, a <strong>4-bit rectangular flip pattern</strong> leaves all row and column parities untouched, escaping detection completely.
             </div>
 
             <div className="viva-q">Q6: What is the difference between Error Detection and Error Correction (FEC)?</div>

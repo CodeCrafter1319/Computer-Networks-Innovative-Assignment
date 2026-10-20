@@ -48,6 +48,10 @@ import {
 } from '../core/error-control/errorInjection.js';
 import { SimulationEngine } from '../core/engine/SimulationEngine.js';
 import { Channel } from '../core/engine/Channel.js';
+import React from 'react';
+import { renderToString } from 'react-dom/server';
+import ErrorControlView from '../ui/modules/ErrorControlView.jsx';
+import App from '../ui/App.jsx';
 
 // ============================================================================
 // 1. EDUCATIONAL CRC & MODULO-2 DIVISION
@@ -595,5 +599,28 @@ describe('Controlled Error Injection & Channel Integration', () => {
     expect(deliveredFrame.payload).toBe('10010010');
     // Original frame must remain unmutated
     expect(frame.payload).toBe('10101010');
+  });
+});
+
+// ============================================================================
+// 6. UI COMPONENT REGRESSION & SMOKE TESTS
+// ============================================================================
+describe('ErrorControlView Component Rendering Smoke Test', () => {
+  it('renders ErrorControlView component cleanly without runtime ReferenceErrors', () => {
+    expect(() => {
+      const html = renderToString(React.createElement(ErrorControlView));
+      expect(html).toContain('Cyclic Redundancy Check');
+      expect(html).toContain('16-bit Internet Checksum');
+      expect(html).toContain('Two-Dimensional Matrix Parity');
+      expect(html).toContain('A burst error of length');
+    }).not.toThrow();
+  });
+
+  it('renders App shell with active error-control tab cleanly', () => {
+    expect(() => {
+      const html = renderToString(React.createElement(App));
+      expect(html).toContain('Data Link Layer Protocol Simulator');
+      expect(html).toContain('Error Control &amp; CRC');
+    }).not.toThrow();
   });
 });

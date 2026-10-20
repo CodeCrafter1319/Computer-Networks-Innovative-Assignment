@@ -139,8 +139,10 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/errorControl.test.js` | Error injection burst flip | Flips $B$ contiguous bits and generates exact error mask | Pass | **PASS** |
 | `src/tests/errorControl.test.js` | Error injection field isolation | Corrupts payload vs FCS independently or together | Pass | **PASS** |
 | `src/tests/errorControl.test.js` | Channel burst corruption | Transmits frame through Channel with burst corruption directive | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | ErrorControlView component rendering | Verifies ErrorControlView renders to HTML without ReferenceErrors | Pass | **PASS** |
+| `src/tests/errorControl.test.js` | App shell component rendering | Verifies App shell renders to HTML with ErrorControl tab active | Pass | **PASS** |
 
-**Summary:** 4 files, 92 tests passed, 0 failed.
+**Summary:** 4 files, 94 tests passed, 0 failed.
 
 ---
 
