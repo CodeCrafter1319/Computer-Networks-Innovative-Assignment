@@ -1,9 +1,9 @@
 # TASKS.md — Project Task Tracker
 
 ## 1. Current Status Overview
-- **Active Phase:** Phase 5 Complete (Awaiting User Sign-off to advance to Phase 6)
-- **Current Task:** Verification of Error Control Algorithms & Step-by-Step CRC Visualizer
-- **Next Task:** Phase 6 — Flow Control — ARQ Protocols & Sliding Window Visualizer
+- **Active Phase:** Phase 6 Complete (Awaiting User Sign-off to advance to Phase 7)
+- **Current Task:** Verification of Flow Control, ARQ Protocols & Sliding Window Visualizer
+- **Next Task:** Phase 7 — Medium Access Control — CSMA/CD Simulation
 
 ---
 
@@ -35,17 +35,18 @@
 - [x] **Task 5.5:** Implement deterministic controlled error injection (`src/core/error-control/errorInjection.js`) and enhance `Channel.js` with burst and field corruption.
 - [x] **Task 5.6:** Write comprehensive Vitest unit tests in `src/tests/errorControl.test.js` (36 tests covering known vectors, bursts, 2-bit evasion, and UI component rendering; 94 tests passing across suite).
 - [x] **Task 5.7:** Build interactive `ErrorControlView.jsx` with step-by-step long division table, register shift log, interactive 2D grid cell toggling, error injection controls, and Viva Helper panel (resolved LaTeX math `{-(R-1)}` JSX ReferenceError).
+- [x] **Task 6.1:** Implement reusable `FrameContract.js` with plain serializable frame objects, compact/extended header serialization, and wire byte extraction.
+- [x] **Task 6.2:** Implement `sequenceMath.js` with positive modulo, circular forward distance, window membership tests, and theoretical window size bounds.
+- [x] **Task 6.3:** Implement Stop-and-Wait ARQ state machine with 1-bit sequence alternating, timeouts, ACK handling, and duplicate detection (`stopAndWait.js`).
+- [x] **Task 6.4:** Implement Go-Back-N ARQ state machine with sliding window $W_s \le 2^m - 1$, cumulative ACKs, single timer for oldest frame, full window retransmission, and out-of-order discard (`goBackN.js`).
+- [x] **Task 6.5:** Implement Selective Repeat ARQ state machine with window constraints $W_s \le 2^{m-1}, W_r \le 2^{m-1}$, independent frame timers, selective ACKs, receiver out-of-order buffering, selective retransmissions, and previous-window re-acknowledgement (`selectiveRepeat.js`).
+- [x] **Task 6.6:** Implement `FlowControlSimulator.js` facade coordinating SimulationEngine, duplex channels, protocol instances, interactive in-flight frame drop/corrupt, trace logs, and theoretical metric calculations.
+- [x] **Task 6.7:** Write comprehensive Vitest unit tests in `src/tests/flowControl.test.js` (26 tests covering sequence math, lost frames, lost ACKs, timeouts, duplicate handling, selective buffering, and interactive controls; 120 tests passing across suite).
+- [x] **Task 6.8:** Build rich interactive `FlowControlView.jsx` with multi-lane animation track, click-to-corrupt / click-to-drop controls, sliding window slot visualizer with timer indicators, live event log, telemetry row, and Viva Helper panel.
 
 ---
 
 ## 3. Pending Tasks (Roadmap)
-
-### Phase 6: Flow Control — ARQ Protocols & Sliding Window Visualizer
-- [ ] **Task 6.1:** Implement Stop-and-Wait ARQ state machine with sequence bit ($0/1$), ACK, timeout, and duplicate detection.
-- [ ] **Task 6.2:** Implement Go-Back-N ARQ state machine with cumulative ACKs and sliding window $[S_f, S_n)$.
-- [ ] **Task 6.3:** Implement Selective Repeat ARQ state machine with receiver buffer and individual timer tracking.
-- [ ] **Task 6.4:** Write unit tests simulating packet loss, ACK loss, delayed ACK, and window wraparound.
-- [ ] **Task 6.5:** Build animated multi-lane channel UI with interactive packet click-to-corrupt / click-to-drop.
 
 ### Phase 7: Medium Access Control — CSMA/CD Simulation
 - [ ] **Task 7.1:** Implement multi-station shared bus model with spatial propagation delay.

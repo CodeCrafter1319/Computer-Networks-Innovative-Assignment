@@ -142,7 +142,41 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/errorControl.test.js` | ErrorControlView component rendering | Verifies ErrorControlView renders to HTML without ReferenceErrors | Pass | **PASS** |
 | `src/tests/errorControl.test.js` | App shell component rendering | Verifies App shell renders to HTML with ErrorControl tab active | Pass | **PASS** |
 
-**Summary:** 4 files, 94 tests passed, 0 failed.
+### Phase 6: Flow Control, ARQ Protocols & Sliding Window Visualizer
+- **Date:** 2026-10-20
+- **Test Runner:** Vitest v3.2.7 (Node environment)
+- **Command:** `pnpm test`
+
+| Test Suite | Test Case Description | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `src/tests/flowControl.test.js` | Modulo math with negative numbers | Returns positive remainder in $[0, M-1]$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Forward circular distance | Calculates clockwise distance across modulo boundaries | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Window membership test | Correctly identifies membership in linear and wraparound windows | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Sequence advance | Advances sequence numbers in modulo $2^m$ space | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Theoretical window limits | Enforces $W_s \le 2^m - 1$ for GBN and $W_s \le 2^{m-1}$ for SR | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Plain frame contract | Generates canonical serializable plain frame objects | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Compact 1-byte header | Encodes/decodes Type (2b), Seq (3b), Ack (3b) for $m \le 3$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | 2-byte header | Encodes/decodes extended header for $m > 3$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Wire bytes extraction | Serializes [Header Bytes + Payload Bytes] for error-control | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Stop-and-Wait single frame | Transmits DATA 0, receives ACK 1, returns to IDLE | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Alternating sequence numbers | Delivers multiple frames alternating $0 \to 1 \to 0$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Lost DATA frame recovery | Sender timer triggers retransmission; frame delivered | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Lost ACK frame recovery | Sender retransmits; receiver suppresses duplicate and re-ACKs | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Corrupted frame handling | Corrupted frame discarded; recovered via timeout | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | GBN window capacity | Accepts up to $W_s$ frames, blocks further sends with WINDOW_FULL | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | GBN cumulative ACKs | In-order delivery; single cumulative ACK advances base | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | GBN out-of-order discard | Lost frame causes discard of subsequent frames; full window resend | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | GBN wraparound | Continuous sliding window wraps sequence space across $2^m$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | SR window configuration check | Rejects illegal $W_s + W_r > 2^m$ configurations | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | SR out-of-order buffering | Buffers frames in window; selectively resends ONLY lost frame | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | SR previous-window re-ACK | Re-acknowledges delivered frames in $[R_f - W_r, R_f)$ to resolve lost ACKs | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Simulator metrics computation | Computes propagation, transmission, BDP, $\eta_{theo}$ and $\eta_{meas}$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Interactive frame drop in-flight | Cancels delivery event in queue; recovers via protocol timeout | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Interactive frame corrupt in-flight | Inverts bits on scheduled packet; detected at receiver | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Simulator clean reconfiguration | Resets virtual clock to 0 and reinitializes with new protocol | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Constructor validation | Enforces non-null dependencies and illegal window bounds | Pass | **PASS** |
+
+**Summary:** 5 files, 120 tests passed, 0 failed.
 
 ---
 

@@ -508,3 +508,288 @@ body {
   border-left: 2px solid var(--accent-purple);
 }
 
+/* ==========================================================================
+   Flow Control & ARQ Protocol Visualizer Styles
+   ========================================================================== */
+
+.fc-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.fc-metric-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.fc-metric-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.fc-metric-val {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.fc-metric-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 0.2rem;
+}
+
+/* Multi-Lane Transmission Medium Visualization */
+.channel-visualizer {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.channel-nodes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.node-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.node-badge-sender {
+  border-left: 4px solid var(--accent-blue);
+}
+
+.node-badge-receiver {
+  border-right: 4px solid var(--accent-emerald);
+}
+
+.node-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.node-subtitle {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.channel-lane {
+  position: relative;
+  height: 64px;
+  background: rgba(17, 24, 39, 0.7);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+}
+
+.lane-label {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  pointer-events: none;
+}
+
+.packet-pill {
+  position: absolute;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  transition: left 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 5;
+}
+
+.packet-data {
+  background: rgba(59, 130, 246, 0.25);
+  border: 1px solid var(--accent-blue);
+  color: #93c5fd;
+}
+
+.packet-ack {
+  background: rgba(16, 185, 129, 0.25);
+  border: 1px solid var(--accent-emerald);
+  color: #6ee7b7;
+}
+
+.packet-corrupted {
+  background: rgba(244, 63, 94, 0.35) !important;
+  border: 1px solid var(--accent-rose) !important;
+  color: #fda4af !important;
+  text-decoration: line-through;
+}
+
+.packet-controls {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 4px;
+}
+
+.packet-btn {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 1px 4px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.packet-btn:hover {
+  background: rgba(244, 63, 94, 0.6);
+  border-color: var(--accent-rose);
+}
+
+/* Sliding Window Slot Bar */
+.window-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0.75rem 0;
+}
+
+.window-slot-item {
+  width: 52px;
+  height: 58px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  position: relative;
+  user-select: none;
+  transition: all 0.2s ease;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+}
+
+.slot-index {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.slot-subtext {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.slot-in-window {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 6px rgba(6, 182, 212, 0.25);
+}
+
+.slot-base-marker {
+  position: absolute;
+  top: -8px;
+  font-size: 0.6rem;
+  background: var(--accent-amber);
+  color: #000;
+  font-weight: 800;
+  padding: 0 3px;
+  border-radius: 2px;
+}
+
+.slot-acked {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: var(--accent-emerald);
+  color: var(--accent-emerald);
+}
+
+.slot-outstanding {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+}
+
+.slot-buffered {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: var(--accent-purple);
+  color: #c4b5fd;
+}
+
+.slot-ready {
+  background: rgba(6, 182, 212, 0.1);
+  color: var(--accent-cyan);
+}
+
+.slot-disabled {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.trace-log-container {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  max-height: 280px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.trace-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.trace-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.trace-tick {
+  color: var(--accent-cyan);
+  min-width: 55px;
+}
+
+.trace-badge {
+  font-size: 0.65rem;
+  padding: 2px 5px;
+  border-radius: 2px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+

@@ -44,18 +44,19 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 3: Discrete-Event Simulation Engine Core** (`EventQueue.js`, `SimulationEngine.js`, `Channel.js`, and comprehensive unit tests in `src/tests/engine.test.js` passing)
 - [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js` with RFC 1662 & generic modes, `charCount.js`, `FramingView.jsx`, and 34 unit tests in `src/tests/framing.test.js` passing)
 - [x] **Phase 5: Error Control Algorithms & Step-by-Step CRC Visualizer** (`crc.js` with educational modulo-2 division and named variants CRC-8/SMBUS & CRC-16/CCITT-FALSE, `checksum.js` with RFC 1071 16-bit 1's complement, `parity.js` with 1D/2D parity and single-bit localization, `errorInjection.js`, `ErrorControlView.jsx`, and 36 unit tests in `src/tests/errorControl.test.js` passing; 94 tests total across suite)
+- [x] **Phase 6: Flow Control, ARQ Protocols & Sliding Window Visualizer** (`FrameContract.js`, `sequenceMath.js`, `stopAndWait.js`, `goBackN.js`, `selectiveRepeat.js`, `FlowControlSimulator.js`, `FlowControlView.jsx`, and 26 unit tests in `src/tests/flowControl.test.js` passing; 120 tests total across suite)
 
 ---
 
 ## 5. Known Issues
-- None. All framing algorithms, educational modulo-2 division, named CRC variants (SMBus check 0xF4, CCITT-FALSE check 0x29B1), RFC 1071 16-bit Internet checksum, and 1D/2D parity modules execute with 100% test pass rate (94/94 tests passing). Component rendering verified.
+- None. All framing algorithms, error-control algorithms, and flow-control ARQ protocols execute with 100% test pass rate (120/120 tests passing). Vite production build completes cleanly.
 
 ---
 
 ## 6. Exact Next Step
-- **Phase 6: Flow Control — ARQ Protocols & Sliding Window Visualizer**
-  - Implement Stop-and-Wait ARQ (`src/core/flow-control/stopAndWait.js` with 1-bit sequence number 0/1, ACK timeouts, frame loss, and duplicate suppression).
-  - Implement Go-Back-N ARQ (`src/core/flow-control/goBackN.js` with sliding window $[S_f, S_n)$, cumulative ACKs, and timer management).
-  - Implement Selective Repeat ARQ (`src/core/flow-control/selectiveRepeat.js` with receiver buffer, negative ACKs / individual ACK tracking, and independent timers).
-  - Write comprehensive Vitest test suites in `src/tests/flowControl.test.js` simulating timeouts, lost ACKs, out-of-order delivery, and window wraparound.
+- **Phase 7: Medium Access Control — CSMA/CD Simulation**
+  - Implement shared bus model with spatial distance and propagation delay.
+  - Implement 1-persistent / non-persistent carrier sense and collision detection within slot time ($2\tau$).
+  - Implement Jam signal propagation and Truncated Binary Exponential Backoff (BEB).
+  - Build interactive bus visualizer showing colliding wavefronts.
   - Build interactive `FlowControlView.jsx` with animated multi-lane channel, packet-in-flight transitions, and click-to-corrupt / click-to-drop controls.
