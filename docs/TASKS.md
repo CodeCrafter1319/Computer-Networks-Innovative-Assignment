@@ -51,6 +51,7 @@
 - [x] **Task 7.4:** Implement `src/core/mac/CsmaCdSimulator.js` facade coordinating 4 stations (A, B, C, D), spatial bus, 6 educational presets, and real-time telemetry metrics.
 - [x] **Task 7.5:** Write comprehensive Vitest unit tests in `src/tests/mac.test.js` (17 tests covering delay math, carrier sensing, collisions, jam signals, BEB calculations, max retry limits, contention resolution, and UI SSR smoke tests; 146 tests passing across suite).
 - [x] **Task 7.6:** Build interactive `MacView.jsx` visualizer with physical bus rail, animated propagating wavefronts, collision markers, station status cards, preset buttons, manual frame injector, live event log terminal, and 6-question CSMA/CD Viva Helper panel.
+- [x] **Task 7.7:** Perform Phase 7 Standards Audit: enforce exact IEEE 802.3 `attemptLimit = 16` (1 initial + 15 retries), resolve attempt 17 off-by-one execution flaw, verify BEB exponent progression ($k=1 \implies [0, 1]$, $k=2 \implies [0, 3]$, $k=10 \implies [0, 1023]$), and add deterministic regression tests for 16-attempt discard and 16th-attempt delivery (148 tests passing across suite).
 
 ---
 

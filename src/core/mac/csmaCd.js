@@ -22,7 +22,12 @@
  */
 
 import { SignalType } from './SharedBus.js';
-import { calculateBackoff, DEFAULT_MAX_EXPONENT, DEFAULT_MAX_RETRIES } from './backoff.js';
+import {
+  calculateBackoff,
+  DEFAULT_MAX_EXPONENT,
+  DEFAULT_ATTEMPT_LIMIT,
+  DEFAULT_MAX_RETRIES,
+} from './backoff.js';
 
 export const StationState = Object.freeze({
   IDLE: 'IDLE',
@@ -70,7 +75,8 @@ export class CsmaCdStation {
       frameTransmissionDuration: config.frameTransmissionDuration ?? 30,
       jamDuration: config.jamDuration ?? 4,
       persistenceMode: config.persistenceMode || PersistenceMode.ONE_PERSISTENT,
-      maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
+      attemptLimit: config.attemptLimit ?? config.maxRetries ?? DEFAULT_ATTEMPT_LIMIT,
+      maxRetries: config.attemptLimit ?? config.maxRetries ?? DEFAULT_ATTEMPT_LIMIT, // Backward-compatible alias
       maxExponent: config.maxExponent ?? DEFAULT_MAX_EXPONENT,
     };
 
@@ -355,15 +361,18 @@ export class CsmaCdStation {
 
     const currentTick = this.engine.getCurrentTick();
 
-    // Check if max retry attempts are exhausted
-    if (this.collisionCount > this.config.maxRetries) {
+    // IEEE 802.3 Clause 4.2.3.2.5 Attempt Limit:
+    // If all attemptLimit transmission attempts have terminated in collisions
+    // (collisionCount >= attemptLimit, default 16), transmission is aborted.
+    if (this.collisionCount >= this.config.attemptLimit) {
       this.state = StationState.ABORTED_EXCESSIVE_COLLISIONS;
       this.stats.excessiveCollisionDrops++;
 
       this._emit('EXCESSIVE_COLLISIONS_ABORT', {
         stationId: this.id,
         attempts: this.collisionCount,
-        maxRetries: this.config.maxRetries,
+        attemptLimit: this.config.attemptLimit,
+        maxRetries: this.config.attemptLimit,
         tick: currentTick,
       });
 
@@ -381,7 +390,8 @@ export class CsmaCdStation {
 
     const backoff = calculateBackoff(this.collisionCount, slotTime, {
       maxExponent: this.config.maxExponent,
-      maxRetries: this.config.maxRetries,
+      attemptLimit: this.config.attemptLimit,
+      maxRetries: this.config.attemptLimit,
       slotChoice,
     });
 

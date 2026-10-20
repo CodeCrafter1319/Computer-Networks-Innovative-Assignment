@@ -758,7 +758,7 @@ export default function MacView() {
                   {log.type === 'BACKOFF_EXPIRED' && `Station ${log.data.stationId} backoff expired; re-sensing medium for retry`}
                   {log.type === 'TRANSMISSION_SUCCESS' && `Station ${log.data.stationId} completed transmission without collision!`}
                   {log.type === 'FRAME_RECEIVED' && `Station ${log.data.stationId} received uncorrupted DATA from ${log.data.sourceStationId}`}
-                  {log.type === 'EXCESSIVE_COLLISIONS_ABORT' && `Station ${log.data.stationId} EXCEEDED max retries (${log.data.attempts} > ${log.data.maxRetries}) — FRAME DISCARDED`}
+                  {log.type === 'EXCESSIVE_COLLISIONS_ABORT' && `Station ${log.data.stationId} reached IEEE 802.3 attempt limit (${log.data.attempts} >= ${log.data.attemptLimit || log.data.maxRetries}) — FRAME DISCARDED`}
                   {log.type === 'FRAME_QUEUED' && `Station ${log.data.stationId} queued new frame for transmission`}
                 </span>
               </div>
@@ -826,7 +826,7 @@ export default function MacView() {
           - On the 2nd collision (c=2), k=2: slots [0, 3] (average delay = 1.5 slots).
           - On the 10th collision (c=10), k=10: slots [0, 1023] (average delay ≈ 512 slots).
           <br />
-          This exponential expansion dynamically spreads retransmissions across a wider time window as contention escalates, preventing repeated collisions. The exponent is truncated at k = 10 to avoid excessive delays, and transmissions are completely aborted after 16 failed attempts (<code style={{ color: 'var(--accent-rose)' }}>c &gt; 16</code>) to prevent buffer starvation.
+          This exponential expansion dynamically spreads retransmissions across a wider time window as contention escalates, preventing repeated collisions. The exponent is truncated at k = 10 to avoid excessive delays, and transmissions are completely aborted if all 16 transmission attempts terminate in collisions (<code style={{ color: 'var(--accent-rose)' }}>c ≥ 16</code>) to prevent channel deadlock and buffer starvation.
         </div>
       </div>
     </div>

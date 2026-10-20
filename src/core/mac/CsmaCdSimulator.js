@@ -42,7 +42,8 @@ export class CsmaCdSimulator {
       frameTransmissionDuration: config.frameTransmissionDuration ?? 30,
       jamDuration: config.jamDuration ?? 4,
       persistenceMode: config.persistenceMode || PersistenceMode.ONE_PERSISTENT,
-      maxRetries: config.maxRetries ?? 16,
+      attemptLimit: config.attemptLimit ?? config.maxRetries ?? 16,
+      maxRetries: config.attemptLimit ?? config.maxRetries ?? 16, // Backward-compatible alias
       maxExponent: config.maxExponent ?? 10,
     };
 
@@ -239,8 +240,8 @@ export class CsmaCdSimulator {
       }
 
       case MacPreset.EXCESSIVE_COLLISIONS: {
-        // Set maxRetries to 2 for quick demonstration
-        this.reset({ maxRetries: 2 });
+        // Set attemptLimit to 2 for quick demonstration
+        this.reset({ attemptLimit: 2, maxRetries: 2 });
         const stA = this.stations.get('A');
         const stB = this.stations.get('B');
         // Keep selecting slot 0 so they collide on every retry until maxRetries is exceeded
@@ -351,7 +352,8 @@ export class CsmaCdSimulator {
       frameDuration: this.config.frameTransmissionDuration,
       jamDuration: this.config.jamDuration,
       persistenceMode: this.config.persistenceMode,
-      maxRetries: this.config.maxRetries,
+      attemptLimit: this.config.attemptLimit,
+      maxRetries: this.config.attemptLimit,
 
       // Aggregate Counters
       totalQueued,

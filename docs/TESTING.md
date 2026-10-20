@@ -224,7 +224,7 @@ All networking logic in this project is developed under strict test-driven valid
 | Test Suite | Test Case Description | Expected Result | Actual Result | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | `src/tests/mac.test.js` | BEB slot range calculations | $c=1 \to k=1 \implies [0, 1]$; $c=2 \to k=2 \implies [0, 3]$; $c=10 \to k=10 \implies [0, 1023]$ | Pass | **PASS** |
-| `src/tests/mac.test.js` | BEB retry limit enforcement | Retries permitted for $c \le 16$; $c=17$ aborts with `EXCESSIVE_COLLISIONS` | Pass | **PASS** |
+| `src/tests/mac.test.js` | BEB attempt limit enforcement | Attempts permitted for $c < 16$; $c \ge 16$ aborts with `EXCESSIVE_COLLISIONS` | Pass | **PASS** |
 | `src/tests/mac.test.js` | BEB wait ticks calculation | Waiting duration = $r \times \text{slotTime}$ ($r \times 2\tau$) | Pass | **PASS** |
 | `src/tests/mac.test.js` | BEB argument validation | Rejects non-positive slotTime or non-positive attempt count | Pass | **PASS** |
 | `src/tests/mac.test.js` | Spatial propagation delay math | $\tau(0, 100) = 10$, $\tau(25, 75) = 5$, $\tau(0, 25) = 3$, $\tau(50, 50) = 0$ | Pass | **PASS** |
@@ -234,14 +234,32 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/mac.test.js` | Near-simultaneous collision detection | Stations A & D transmit within $\tau$; signals collide; both abort and emit 32-bit jam | Pass | **PASS** |
 | `src/tests/mac.test.js` | BEB backoff execution | Colliding stations calculate $k = \min(c, 10)$ and wait $r \times 2\tau$ ticks | Pass | **PASS** |
 | `src/tests/mac.test.js` | 1-Persistent sensing deferral | Station B senses A's busy transmission; defers until idle; transmits immediately | Pass | **PASS** |
-| `src/tests/mac.test.js` | Excessive collisions frame drop | Stations exceeding $c > 16$ abort transmission permanently | Pass | **PASS** |
+| `src/tests/mac.test.js` | Excessive collisions frame drop | Stations reaching attempt limit ($c \ge \text{attemptLimit}$) abort transmission | Pass | **PASS** |
 | `src/tests/mac.test.js` | Simulator preset loader | Presets (clean, collision, deferral, contention, BEB, excessive) initialize cleanly | Pass | **PASS** |
 | `src/tests/mac.test.js` | Full contention resolution cycle | Colliding stations resolve contention via BEB; both frames eventually delivered | Pass | **PASS** |
 | `src/tests/mac.test.js` | Reset and queue integrity | Resetting clears event queue, bus signals, and resets all stations to IDLE | Pass | **PASS** |
+| `src/tests/mac.test.js` | Scenario 9: Exact 16-attempt limit | Discards frame on 16th collision; strictly prevents 17th attempt | Pass | **PASS** |
+| `src/tests/mac.test.js` | Scenario 10: 16th attempt delivery | Successfully delivers frame on 16th and final permitted transmission attempt | Pass | **PASS** |
 | `src/tests/mac.test.js` | MacView SSR smoke test | Renders full MacView component cleanly without runtime ReferenceErrors | Pass | **PASS** |
 | `src/tests/mac.test.js` | App shell with active mac tab SSR | Renders App shell with active CSMA/CD Bus tab cleanly | Pass | **PASS** |
 
-**Summary:** 6 files, 146 tests passed, 0 failed.
+**Summary:** 6 files, 148 tests passed, 0 failed.
+
+### Phase 7 Standards Audit Record — CSMA/CD Attempt Limit & BEB Conventions
+- **Date:** 2026-10-20
+- **Scope:** Narrowly scoped standards audit of IEEE 802.3 Clause 4.2.3.2.5 (`attemptLimit = 16`), counter semantics, and BEB exponent progression.
+- **Counter Semantics Clarified:**
+  1. **Total Transmission Attempts ($A$):** Initial transmission is attempt 1. Subsequent attempts are retransmissions ($R = A - 1$). The standard permits at most 16 total transmission attempts (1 initial + 15 retries).
+  2. **Collision Count ($c$):** Each collision terminates one transmission attempt. When a frame collides on attempt $A$, the cumulative collision count $c$ equals $A$.
+  3. **Attempt Limit Enforcement:** Previously, the check evaluated `if (collisionCount > maxRetries)`, which allowed $c = 16$ to back off and initiate a 17th transmission attempt before aborting. Corrected to `if (this.collisionCount >= this.config.attemptLimit)` where `attemptLimit = 16`. When the 16th attempt terminates in a collision, the station immediately transitions to `StationState.ABORTED_EXCESSIVE_COLLISIONS` without backoff, permanently discarding the frame.
+- **BEB Exponent Convention Verified:**
+  - After collision 1: $k = \min(1, 10) = 1 \implies r \in \{0, 1\}$.
+  - After collision 2: $k = \min(2, 10) = 2 \implies r \in \{0, 1, 2, 3\}$.
+  - After collisions 10..15: $k = \min(c, 10) = 10 \implies r \in [0, 1023]$.
+  - After collision 16: Attempt limit exhausted ($16 \ge 16$). Frame discarded with `excessiveCollisionError`.
+- **Deterministic Test Verification:**
+  - `Scenario 9`: Verified that two stations colliding continuously make exactly 16 attempts, abort upon the 16th collision, and never attempt a 17th transmission.
+  - `Scenario 10`: Verified that a station experiencing 15 collisions successfully delivers its frame on the 16th and final permitted attempt ($A = 16, c = 15, \text{delivered} = 1$).
 
 ---
 

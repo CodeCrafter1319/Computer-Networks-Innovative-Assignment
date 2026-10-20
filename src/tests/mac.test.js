@@ -51,13 +51,21 @@ describe('Binary Exponential Backoff (BEB) Algorithm', () => {
     expect(r15.maxSlots).toBe(1024);
   });
 
-  it('enforces maximum retry limit (16 attempts)', () => {
+  it('enforces IEEE 802.3 maximum attempt limit (16 attempts)', () => {
+    // Attempts 1..15: 1..15 collisions experienced so far => attempt 16 is still permitted
     expect(isExcessiveCollisions(15)).toBe(false);
-    expect(isExcessiveCollisions(16)).toBe(false);
-    expect(isExcessiveCollisions(17)).toBe(true);
+    const b15 = calculateBackoff(15, 20);
+    expect(b15.exceededAttemptLimit).toBe(false);
+    expect(b15.exceededMaxRetries).toBe(false);
+    expect(b15.k).toBe(10); // Capped at k = 10
+    expect(b15.maxSlots).toBe(1024);
 
-    const backoffExceeded = calculateBackoff(17, 20);
+    // Collision 16: All 16 transmission attempts have collided and failed => abort with EXCESSIVE_COLLISIONS
+    expect(isExcessiveCollisions(16)).toBe(true);
+    const backoffExceeded = calculateBackoff(16, 20);
+    expect(backoffExceeded.exceededAttemptLimit).toBe(true);
     expect(backoffExceeded.exceededMaxRetries).toBe(true);
+    expect(backoffExceeded.slotChosen).toBeNull();
     expect(backoffExceeded.reason).toBe('EXCESSIVE_COLLISIONS');
   });
 
@@ -283,12 +291,12 @@ describe('CSMA/CD Protocol State Machine & Simulator Contention', () => {
     expect(stB.stats.transmissionAttempts).toBe(1);
   });
 
-  it('Scenario 5: Excessive collisions terminate transmission when maxRetries is exceeded', () => {
+  it('Scenario 5: Excessive collisions terminate transmission when attemptLimit is reached', () => {
     const sim = new CsmaCdSimulator({
       frameTransmissionDuration: 20,
       maxPropagationDelay: 5,
       jamDuration: 2,
-      maxRetries: 2, // Low retry limit for test
+      attemptLimit: 2, // Low attempt limit for test (1 initial + 1 retry)
     });
 
     const stA = sim.stations.get('A');
@@ -301,13 +309,15 @@ describe('CSMA/CD Protocol State Machine & Simulator Contention', () => {
     sim.send('A', 'Persistent Frame A', 'C');
     sim.send('B', 'Persistent Frame B', 'D');
 
-    // Run until stations exceed maxRetries = 2
+    // Run until stations exceed attemptLimit = 2
     sim.runUntil(
       s => s.stations.get('A').state === StationState.ABORTED_EXCESSIVE_COLLISIONS,
       150
     );
 
     expect(stA.state).toBe(StationState.ABORTED_EXCESSIVE_COLLISIONS);
+    expect(stA.stats.transmissionAttempts).toBe(2); // Exactly 2 attempts made
+    expect(stA.collisionCount).toBe(2);
     expect(stA.stats.excessiveCollisionDrops).toBe(1);
     expect(stA.stats.framesDelivered).toBe(0);
 
@@ -383,6 +393,80 @@ describe('CSMA/CD Protocol State Machine & Simulator Contention', () => {
     expect(sim.engine.getQueue().isEmpty()).toBe(true);
     expect(sim.bus.activeSignals.length).toBe(0);
     expect(sim.stations.get('A').state).toBe(StationState.IDLE);
+  });
+
+  it('Scenario 9: Enforces IEEE 802.3 limit of exactly 16 total transmission attempts before discard', () => {
+    // Under IEEE 802.3 Clause 4.2.3.2.5, attemptLimit is 16 (1 initial attempt + 15 retries).
+    // If all 16 attempts collide, the frame is discarded and attempt 17 is NEVER made.
+    const sim = new CsmaCdSimulator({
+      frameTransmissionDuration: 8,
+      maxPropagationDelay: 2, // fast propagation
+      jamDuration: 2,
+      attemptLimit: 16,
+    });
+
+    const stA = sim.stations.get('A');
+    const stB = sim.stations.get('B');
+
+    // Feed slot 0 for all backoffs so A and B collide on every single attempt
+    const zeroSlots = new Array(25).fill(0);
+    stA.setDeterministicSlots(zeroSlots);
+    stB.setDeterministicSlots([...zeroSlots]);
+
+    sim.send('A', 'Frame A 16 attempts', 'C');
+    sim.send('B', 'Frame B 16 attempts', 'D');
+
+    // Run until Station A aborts
+    sim.runUntil(
+      s => s.stations.get('A').state === StationState.ABORTED_EXCESSIVE_COLLISIONS,
+      800
+    );
+
+    // Verify Station A made exactly 16 transmission attempts
+    expect(stA.state).toBe(StationState.ABORTED_EXCESSIVE_COLLISIONS);
+    expect(stA.stats.transmissionAttempts).toBe(16);
+    expect(stA.collisionCount).toBe(16);
+    expect(stA.stats.excessiveCollisionDrops).toBe(1);
+    expect(stA.stats.framesDelivered).toBe(0);
+
+    // Advance clock further to guarantee no 17th transmission attempt occurs
+    sim.stepTicks(50);
+    expect(stA.stats.transmissionAttempts).toBe(16);
+    expect(stA.state).toBe(StationState.ABORTED_EXCESSIVE_COLLISIONS);
+  });
+
+  it('Scenario 10: Allows transmission success on the 16th and final permitted attempt', () => {
+    // Frame collides on attempts 1..15 (15 collisions), then succeeds on attempt 16
+    const sim = new CsmaCdSimulator({
+      frameTransmissionDuration: 8,
+      maxPropagationDelay: 2,
+      jamDuration: 2,
+      attemptLimit: 16,
+    });
+
+    const stA = sim.stations.get('A');
+    const stB = sim.stations.get('B');
+
+    // On collisions 1..14: both choose slot 0 and collide
+    // On collision 15: B chooses slot 5 while A chooses slot 0 => Attempt 16 of A succeeds!
+    const slotsA = new Array(15).fill(0); // 15 backoffs all slot 0
+
+    const slotsB = new Array(14).fill(0); // 14 backoffs slot 0
+    slotsB.push(5); // 15th backoff chooses slot 5 (waits 5 slots = 20 ticks, allowing A to transmit clear)
+
+    stA.setDeterministicSlots(slotsA);
+    stB.setDeterministicSlots(slotsB);
+
+    sim.send('A', 'Final Attempt 16 Frame', 'C');
+    sim.send('B', 'Competing Frame', 'D');
+
+    // Run until Station A delivers its frame
+    sim.runUntil(s => s.stations.get('A').stats.framesDelivered === 1, 800);
+
+    expect(stA.stats.framesDelivered).toBe(1);
+    expect(stA.stats.transmissionAttempts).toBe(16); // Exactly 16 attempts made
+    expect(stA.stats.excessiveCollisionDrops).toBe(0);
+    expect(stA.state).toBe(StationState.IDLE);
   });
 });
 
