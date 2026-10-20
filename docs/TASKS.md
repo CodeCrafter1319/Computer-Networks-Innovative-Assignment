@@ -44,6 +44,7 @@
 - [x] **Task 6.7:** Write comprehensive Vitest unit tests in `src/tests/flowControl.test.js` (32 tests covering sequence math, lost frames, lost ACKs, timeouts, duplicate handling, selective buffering, worked timing cycle, and interactive controls; 126 tests passing across suite).
 - [x] **Task 6.8:** Build rich interactive `FlowControlView.jsx` with multi-lane animation track, click-to-corrupt / click-to-drop controls, sliding window slot visualizer with timer indicators, live event log, telemetry row, and Viva Helper panel.
 - [x] **Task 6.9:** Perform Phase 6 Technical Audit: audit channel serialization timing ($T_t + 2T_p$), verify theoretical utilization formulas against discrete-event clock, confirm SSR rendering across all modules, and probe Vite dev server.
+- [x] **Task 6.10:** Perform Final Metric Semantics Audit: rigorously separate Channel Utilization ($U_{\text{channel}}$), Transmission Success Ratio ($S_{\text{tx}}$), Useful Utilization ($U_{\text{useful}}$), and Goodput ($G$); implement transmitter busy tracking in `Channel.js`; update UI metrics & Viva Q5 in `FlowControlView.jsx`; add deterministic regression tests for clean transmission, lost DATA retransmission, and lost ACK duplicate suppression (129 tests passing across suite).
 
 ---
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { SimulationEngine } from '../core/engine/SimulationEngine.js';
-import { Channel } from '../core/engine/Channel.js';
+import { Channel, TransmissionOutcome } from '../core/engine/Channel.js';
 import {
   FrameType,
   createFrame,
@@ -615,6 +615,140 @@ describe('FlowControlSimulator Facade & Diagnostics', () => {
   });
 });
 
+describe('Flow Control Metric Semantics & Channel Utilization Audits', () => {
+  it('Scenario A: Single clean transmission with zero retransmissions', () => {
+    // Parameters: Tt = 1, Tp = 5, timeout = 20
+    // Expected transaction timeline:
+    // t = 0: Sender begins DATA #0 transmission (busy during [0, 1])
+    // t = 1: Trailing bit leaves transmitter; forward channel occupied for 1 tick
+    // t = 6: DATA #0 reaches receiver; receiver delivers frame and sends ACK #1
+    // t = 11: ACK #1 reaches sender; sender returns to IDLE
+    // Telapsed = 11 ticks
+    const sim = new FlowControlSimulator({
+      protocol: FlowControlProtocol.STOP_AND_WAIT,
+      propagationDelay: 5,
+      transmissionDelay: 1,
+      timeoutDuration: 20,
+    });
+
+    sim.send('Clean DATA');
+    sim.stepTicks(11);
+
+    expect(sim.engine.getCurrentTick()).toBe(11);
+    expect(sim.protocolInstance.status).toBe(SenderStatus.IDLE);
+    expect(sim.protocolInstance.stats.totalTransmissions).toBe(1);
+    expect(sim.protocolInstance.stats.initialTransmissions).toBe(1);
+    expect(sim.protocolInstance.stats.retransmissions).toBe(0);
+    expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
+    expect(sim.protocolInstance.stats.duplicatesDiscarded).toBe(0);
+
+    const metrics = sim.getTheoreticalMetrics();
+    expect(metrics.channelOccupiedTicks).toBe(1);
+    // U = 1 / 11 * 100 = 9.1%
+    expect(metrics.channelUtilization).toBe(9.1);
+    // Stx = (1 / 1) * 100 = 100.0%
+    expect(metrics.transmissionSuccessRatio).toBe(100.0);
+    // Useful utilization = (1 * 1 / 11) * 100 = 9.1%
+    expect(metrics.usefulUtilization).toBe(9.1);
+    // Theoretical efficiency = 1 / (1 + 2 * (5/1)) = 1 / 11 = 9.1%
+    expect(metrics.theoreticalEfficiency).toBe(9.1);
+    // Goodput = 1 / 11 = 0.091 frames/tick
+    expect(metrics.goodputFramesPerTick).toBe(0.091);
+    expect(metrics.totalDeliveredBits).toBe('Clean DATA'.length * 8);
+  });
+
+  it('Scenario B: Lost DATA frame followed by timeout and successful retransmission', () => {
+    // Parameters: Tt = 1, Tp = 5, timeout = 16
+    // Timeline:
+    // t = 0: Sender transmits DATA #0 (attempt 1, busy [0, 1]). Forward channel DROPS frame.
+    // t = 16: Sender timer expires; retransmits DATA #0 (attempt 2, busy [16, 17]).
+    // t = 17: Trailing bit leaves transmitter; forward channel occupied for 2 ticks total.
+    // t = 22: DATA #0 reaches receiver; receiver delivers frame and sends ACK #1.
+    // t = 27: ACK #1 reaches sender; sender returns to IDLE.
+    // Telapsed = 27 ticks
+    const sim = new FlowControlSimulator({
+      protocol: FlowControlProtocol.STOP_AND_WAIT,
+      propagationDelay: 5,
+      transmissionDelay: 1,
+      timeoutDuration: 16,
+    });
+
+    // Program deterministic drop for the first forward transmission
+    sim.forwardChannel.setFaultPlan([{ action: 'DROP', outcome: TransmissionOutcome.DROPPED }]);
+
+    sim.send('Lost DATA');
+    sim.stepTicks(27);
+
+    expect(sim.engine.getCurrentTick()).toBe(27);
+    expect(sim.protocolInstance.status).toBe(SenderStatus.IDLE);
+    expect(sim.protocolInstance.stats.totalTransmissions).toBe(2);
+    expect(sim.protocolInstance.stats.initialTransmissions).toBe(1);
+    expect(sim.protocolInstance.stats.retransmissions).toBe(1);
+    expect(sim.protocolInstance.stats.timeouts).toBe(1);
+    expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
+    expect(sim.protocolInstance.stats.duplicatesDiscarded).toBe(0);
+
+    const metrics = sim.getTheoreticalMetrics();
+    // Physical channel occupancy counts both attempts: 1 + 1 = 2 ticks
+    expect(metrics.channelOccupiedTicks).toBe(2);
+    // U = 2 / 27 * 100 = 7.4%
+    expect(metrics.channelUtilization).toBe(7.4);
+    // Stx = (1 / 2) * 100 = 50.0%
+    expect(metrics.transmissionSuccessRatio).toBe(50.0);
+    // Useful utilization = (1 * 1 / 27) * 100 = 3.7%
+    expect(metrics.usefulUtilization).toBe(3.7);
+    // Verifying relationship: U_useful = U * (Stx / 100) (within rounding precision)
+    expect(metrics.usefulUtilization).toBe(Number(((metrics.channelUtilization * (metrics.transmissionSuccessRatio / 100))).toFixed(1)));
+    expect(metrics.goodputFramesPerTick).toBe(Number((1 / 27).toFixed(3)));
+  });
+
+  it('Scenario C: Lost ACK causing timeout retransmission where duplicate payload is suppressed', () => {
+    // Parameters: Tt = 1, Tp = 5, timeout = 16
+    // Timeline:
+    // t = 0: Sender transmits DATA #0 (attempt 1, busy [0, 1]).
+    // t = 6: DATA #0 reaches receiver; receiver delivers payload, sends ACK #1.
+    // Reverse channel DROPS the first ACK!
+    // t = 16: Sender timer expires; retransmits DATA #0 (attempt 2, busy [16, 17]).
+    // t = 22: DATA #0 reaches receiver; receiver recognizes duplicate, SUPPRESSES delivery, re-sends ACK #1.
+    // t = 27: ACK #1 reaches sender; sender returns to IDLE.
+    // Telapsed = 27 ticks
+    const sim = new FlowControlSimulator({
+      protocol: FlowControlProtocol.STOP_AND_WAIT,
+      propagationDelay: 5,
+      transmissionDelay: 1,
+      timeoutDuration: 16,
+    });
+
+    // Program deterministic drop for the first reverse ACK transmission
+    sim.reverseChannel.setFaultPlan([{ action: 'DROP', outcome: TransmissionOutcome.DROPPED }]);
+
+    sim.send('Duplicate DATA');
+    sim.stepTicks(27);
+
+    expect(sim.engine.getCurrentTick()).toBe(27);
+    expect(sim.protocolInstance.status).toBe(SenderStatus.IDLE);
+    expect(sim.protocolInstance.stats.totalTransmissions).toBe(2);
+    expect(sim.protocolInstance.stats.initialTransmissions).toBe(1);
+    expect(sim.protocolInstance.stats.retransmissions).toBe(1);
+    expect(sim.protocolInstance.stats.timeouts).toBe(1);
+    // Exactly 1 frame delivered, 1 duplicate suppressed
+    expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
+    expect(sim.protocolInstance.stats.duplicatesDiscarded).toBe(1);
+    expect(sim.protocolInstance.deliveredPayloads.length).toBe(1);
+
+    const metrics = sim.getTheoreticalMetrics();
+    // Physical forward channel occupancy counts both transmissions: 1 + 1 = 2 ticks
+    expect(metrics.channelOccupiedTicks).toBe(2);
+    // U = 2 / 27 * 100 = 7.4%
+    expect(metrics.channelUtilization).toBe(7.4);
+    // Stx = 1 delivered / 2 attempts * 100 = 50.0%
+    expect(metrics.transmissionSuccessRatio).toBe(50.0);
+    // Useful utilization = 1 / 27 * 100 = 3.7%
+    expect(metrics.usefulUtilization).toBe(3.7);
+    expect(metrics.goodputFramesPerTick).toBe(Number((1 / 27).toFixed(3)));
+  });
+});
+
 describe('FlowControlView Component Rendering Smoke Test', () => {
   it('renders FlowControlView component cleanly without runtime ReferenceErrors', () => {
     expect(() => {
@@ -623,8 +757,9 @@ describe('FlowControlView Component Rendering Smoke Test', () => {
       expect(html).toContain('Stop-and-Wait ARQ');
       expect(html).toContain('Go-Back-N ARQ');
       expect(html).toContain('Selective Repeat ARQ');
-      expect(html).toContain('Channel Utilization (η)');
-      expect(html).toContain('Transmission Goodput');
+      expect(html).toContain('Channel Utilization (U)');
+      expect(html).toContain('Success Ratio (Stx)');
+      expect(html).toContain('Goodput');
       expect(html).toContain('Viva Helper &amp; Technical Theory');
     }).not.toThrow();
   });

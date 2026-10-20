@@ -371,18 +371,46 @@ export class FlowControlSimulator {
     const stats = this.protocolInstance.stats;
     const currentTick = this.engine.getCurrentTick();
 
-    // 1. Channel Time Utilization (η): fraction of elapsed virtual time occupied by useful frame transmission
+    // 1. Channel Utilization:
+    // Fraction of elapsed virtual time during which the forward transmission medium was occupied
+    // by actual physical DATA frame serializations (counting all attempts: initial + retransmissions).
+    // In full-duplex point-to-point ARQ, ACK serialization on reverse channel is negligible (Tack = 0).
+    const totalTxAttempts = stats.totalTransmissions;
+    const channelOccupiedTicks = this.forwardChannel.getTotalBusyTicks();
     const channelUtilization = currentTick > 0
+      ? Math.min(1, channelOccupiedTicks / currentTick)
+      : 0;
+
+    // 2. Transmission Success Ratio (Packet Efficiency):
+    // Successfully delivered/acknowledged DATA frames divided by total on-wire transmission attempts
+    const transmissionSuccessRatio = totalTxAttempts > 0
+      ? (stats.framesDelivered / totalTxAttempts)
+      : 0;
+
+    // 3. Useful Channel Utilization (Goodput Efficiency):
+    // Fraction of elapsed virtual time occupied by unique, successfully delivered frames
+    const usefulUtilization = currentTick > 0
       ? Math.min(1, (stats.framesDelivered * Tt) / currentTick)
       : 0;
 
-    // 2. Transmission Efficiency / Goodput Ratio: fraction of on-wire frame transmissions that resulted in delivered payloads
-    const transmissionEfficiency = stats.totalTransmissions > 0
-      ? (stats.framesDelivered / stats.totalTransmissions)
+    // 4. Goodput Rates:
+    // Rate of useful payload delivered per virtual tick
+    const throughputFramesPerTick = currentTick > 0
+      ? (stats.framesDelivered / currentTick)
       : 0;
 
-    const throughput = currentTick > 0
-      ? (stats.framesDelivered / currentTick)
+    const deliveredPayloads = this.protocolInstance.deliveredPayloads || [];
+    const totalDeliveredBits = deliveredPayloads.reduce((sum, item) => {
+      if (typeof item.payload === 'string') {
+        return sum + item.payload.length * 8;
+      } else if (item.payload instanceof Uint8Array) {
+        return sum + item.payload.length * 8;
+      }
+      return sum;
+    }, 0);
+
+    const goodputBitsPerTick = currentTick > 0
+      ? (totalDeliveredBits / currentTick)
       : 0;
 
     return {
@@ -392,10 +420,23 @@ export class FlowControlSimulator {
       rtt,
       bandwidthDelayProduct: Number((2 * a).toFixed(2)),
       theoreticalEfficiency: Number((theoreticalEfficiency * 100).toFixed(1)),
+
+      // Core Audited Metrics:
       channelUtilization: Number((channelUtilization * 100).toFixed(1)),
-      transmissionEfficiency: Number((transmissionEfficiency * 100).toFixed(1)),
       measuredEfficiency: Number((channelUtilization * 100).toFixed(1)), // Backward-compatible alias
-      throughput: Number(throughput.toFixed(3)),
+      channelOccupiedTicks,
+
+      transmissionSuccessRatio: Number((transmissionSuccessRatio * 100).toFixed(1)),
+      transmissionEfficiency: Number((transmissionSuccessRatio * 100).toFixed(1)), // Backward-compatible alias
+
+      usefulUtilization: Number((usefulUtilization * 100).toFixed(1)),
+
+      // Goodput Metrics:
+      throughput: Number(throughputFramesPerTick.toFixed(3)),
+      goodputFramesPerTick: Number(throughputFramesPerTick.toFixed(3)),
+      goodputBitsPerTick: Number(goodputBitsPerTick.toFixed(2)),
+      totalDeliveredBits,
+
       optimalWindowSize: Math.ceil(1 + 2 * a),
     };
   }

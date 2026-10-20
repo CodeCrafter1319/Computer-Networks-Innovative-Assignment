@@ -480,19 +480,27 @@ export default function FlowControlView() {
         </div>
 
         <div className="fc-metric-card">
-          <span className="fc-metric-label">Channel Utilization (η)</span>
+          <span className="fc-metric-label">Channel Utilization (U)</span>
           <span className="fc-metric-val" style={{ color: 'var(--accent-blue)' }}>
             {metrics.channelUtilization}%
           </span>
-          <span className="fc-metric-sub">Ideal Bound: {metrics.theoreticalEfficiency}%</span>
+          <span className="fc-metric-sub">Occupied: {metrics.channelOccupiedTicks}t | Ideal: {metrics.theoreticalEfficiency}%</span>
         </div>
 
         <div className="fc-metric-card">
-          <span className="fc-metric-label">Transmission Goodput</span>
-          <span className="fc-metric-val" style={{ color: metrics.transmissionEfficiency < 100 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
-            {metrics.transmissionEfficiency}%
+          <span className="fc-metric-label">Success Ratio (Stx)</span>
+          <span className="fc-metric-val" style={{ color: metrics.transmissionSuccessRatio < 100 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
+            {metrics.transmissionSuccessRatio}%
           </span>
-          <span className="fc-metric-sub">Useful data / wire frames</span>
+          <span className="fc-metric-sub">{protocolState.stats.framesDelivered} deliv / {protocolState.stats.totalTransmissions} tx</span>
+        </div>
+
+        <div className="fc-metric-card">
+          <span className="fc-metric-label">Goodput</span>
+          <span className="fc-metric-val" style={{ color: 'var(--accent-purple)' }}>
+            {metrics.goodputBitsPerTick} <span style={{ fontSize: '0.75rem' }}>bits/t</span>
+          </span>
+          <span className="fc-metric-sub">{metrics.goodputFramesPerTick} frames/t ({metrics.usefulUtilization}% useful)</span>
         </div>
 
         <div className="fc-metric-card">
@@ -911,14 +919,24 @@ export default function FlowControlView() {
           Selecting W ≥ 1 + 2a keeps the transmission pipe continuously full.
         </div>
 
-        <div className="viva-q">Q5: What is the distinction between Channel Time Utilization and Transmission Goodput?</div>
+        <div className="viva-q">Q5: What is the distinction between Channel Utilization, Transmission Success Ratio, and Goodput?</div>
         <div className="viva-a">
-          Channel Utilization (η) measures link temporal occupancy: the fraction of elapsed virtual time that the medium
-          was actively transmitting useful payload bits, bounded by min(1, W / (1 + 2a)).
-          Transmission Goodput (Packet Efficiency) measures frame conservation: the fraction of all physical transmissions
-          (including retransmissions) that successfully delivered new data: FramesDelivered / TotalTransmissions.
-          In a noiseless link, Transmission Goodput is 100% even if Channel Utilization is low (e.g. 9.1% for Stop-and-Wait)
-          because no packets were wasted on retransmissions.
+          These three metrics measure fundamentally different aspects of protocol performance:
+          <br /><br />
+          1. <strong>Channel Utilization (U):</strong> Measures physical medium temporal occupancy — the fraction of elapsed virtual time during which the forward channel was actively occupied serializing DATA frames (including both original attempts and retransmissions):
+          <br />
+          <code style={{ color: 'var(--accent-cyan)' }}>U = (Total Channel Busy Ticks) / Elapsed Virtual Ticks = (N_transmissions × Tt) / Telapsed</code>.
+          In a noiseless Stop-and-Wait link with Tt = 1 and Tp = 5, one frame transaction occupies 1 tick out of an 11-tick RTT cycle, yielding U = 1 / 11 ≈ 9.1% (matching the theoretical bound 1 / (1 + 2a)). Retransmissions increase physical channel occupancy.
+          <br /><br />
+          2. <strong>Transmission Success Ratio (Stx, Packet Efficiency):</strong> Measures frame conservation and loss overhead — the ratio of successfully delivered unique frames to total on-wire transmission attempts:
+          <br />
+          <code style={{ color: 'var(--accent-emerald)' }}>Stx = (FramesDelivered / TotalTransmissions) × 100%</code>.
+          On a noiseless link, Stx is 100% even if channel utilization is low. If 1 frame is dropped and retransmitted once successfully, Stx = 1 / 2 = 50%.
+          <br /><br />
+          3. <strong>Goodput (G):</strong> Measures effective application-layer delivery rate per unit time, excluding protocol headers, dropped packets, and duplicate retransmissions:
+          <br />
+          <code style={{ color: 'var(--accent-purple)' }}>G_frames = FramesDelivered / Telapsed (frames/tick)</code> and <code style={{ color: 'var(--accent-purple)' }}>G_bits = DeliveredBits / Telapsed (bits/tick)</code>.
+          Useful channel utilization is related by: <code style={{ color: 'var(--accent-amber)' }}>U_useful = (FramesDelivered × Tt) / Telapsed = U × (Stx / 100)</code>.
         </div>
       </div>
     </div>

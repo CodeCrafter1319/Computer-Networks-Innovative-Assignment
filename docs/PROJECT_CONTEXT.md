@@ -44,12 +44,12 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 3: Discrete-Event Simulation Engine Core** (`EventQueue.js`, `SimulationEngine.js`, `Channel.js`, and comprehensive unit tests in `src/tests/engine.test.js` passing)
 - [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js` with RFC 1662 & generic modes, `charCount.js`, `FramingView.jsx`, and 34 unit tests in `src/tests/framing.test.js` passing)
 - [x] **Phase 5: Error Control Algorithms & Step-by-Step CRC Visualizer** (`crc.js` with educational modulo-2 division and named variants CRC-8/SMBUS & CRC-16/CCITT-FALSE, `checksum.js` with RFC 1071 16-bit 1's complement, `parity.js` with 1D/2D parity and single-bit localization, `errorInjection.js`, `ErrorControlView.jsx`, and 36 unit tests in `src/tests/errorControl.test.js` passing; 94 tests total across suite)
-- [x] **Phase 6: Flow Control, ARQ Protocols & Sliding Window Visualizer** (`FrameContract.js`, `sequenceMath.js`, `stopAndWait.js`, `goBackN.js`, `selectiveRepeat.js`, `FlowControlSimulator.js`, `FlowControlView.jsx`, and 32 unit tests in `src/tests/flowControl.test.js` passing; 126 tests total across suite)
+- [x] **Phase 6: Flow Control, ARQ Protocols & Sliding Window Visualizer** (`FrameContract.js`, `sequenceMath.js`, `stopAndWait.js`, `goBackN.js`, `selectiveRepeat.js`, `FlowControlSimulator.js`, `FlowControlView.jsx`, audited channel utilization and goodput metrics, and 35 unit tests in `src/tests/flowControl.test.js` passing; 129 tests total across suite)
 
 ---
 
 ## 5. Known Issues
-- None. All framing algorithms, error-control algorithms, and flow-control ARQ protocols execute with 100% test pass rate (126/126 tests passing). Channel serialization timing ($T_t + 2T_p$) and theoretical utilization formulas audited and confirmed numerically equal. Vite production build completes cleanly.
+- None. All framing algorithms, error-control algorithms, and flow-control ARQ protocols execute with 100% test pass rate (129/129 tests passing). Channel serialization timing ($T_t + 2T_p$), channel occupancy, packet efficiency, and goodput formulas audited and confirmed numerically rigorous. Vite production build completes cleanly.
 
 ---
 

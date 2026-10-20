@@ -181,8 +181,29 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/flowControl.test.js` | App shell with active tab SSR | Renders App shell with active Flow Control tab cleanly | Pass | **PASS** |
 | `src/tests/flowControl.test.js` | All views component smoke test | Renders FramingView, ErrorControlView, and FlowControlView cleanly | Pass | **PASS** |
 | `src/tests/flowControl.test.js` | Stop-and-Wait worked timing example | Verifies exact transmission, propagation, and ACK timing against worked cycle ($T_t + 2T_p$) with $\eta_{meas} = \eta_{theo} = 20.0\%$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Metric Audit Scenario A | Single clean transmission (0 retransmissions): $U = 9.1\%$, $S_{tx} = 100\%$, $U_{useful} = 9.1\%$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Metric Audit Scenario B | Lost DATA with timeout retransmission: $U = 7.4\%$, $S_{tx} = 50\%$, $U_{useful} = 3.7\%$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Metric Audit Scenario C | Lost ACK with duplicate suppression: $U = 7.4\%$, $S_{tx} = 50\%$, $U_{useful} = 3.7\%$, duplicatesDiscarded = 1 | Pass | **PASS** |
 
-**Summary:** 5 files, 126 tests passed, 0 failed.
+**Summary:** 5 files, 129 tests passed, 0 failed.
+
+### Phase 6 Metric Semantics & Channel Utilization Audit Record
+- **Date:** 2026-10-20
+- **Scope:** Narrowly scoped audit separating Channel Utilization, Transmission Success Ratio, and Goodput, with verified formulas and deterministic regression test cases.
+- **Metric Definitions & Mathematical Formulations:**
+  1. **Channel Utilization ($U$):** Fraction of elapsed virtual time during which the forward transmission medium was physically occupied by all DATA frame attempts (including original transmissions and retransmissions):
+     $$U = \frac{\text{Total Transmitter Busy Ticks}}{T_{\text{elapsed}}} = \frac{\sum T_t}{T_{\text{elapsed}}}$$
+     In full-duplex point-to-point ARQ, ACK transmission time on the reverse channel is negligible ($T_{\text{ack}} = 0$).
+  2. **Transmission Success Ratio ($S_{\text{tx}}$, Packet Efficiency):** Ratio of successfully delivered unique DATA frames to total on-wire transmission attempts:
+     $$S_{\text{tx}} = \frac{N_{\text{delivered}}}{N_{\text{transmissions}}} \times 100\%$$
+  3. **Useful Channel Utilization ($U_{\text{useful}}$):** Fraction of elapsed time occupied by unique, delivered frames:
+     $$U_{\text{useful}} = \frac{N_{\text{delivered}} \times T_t}{T_{\text{elapsed}}} = U \times \frac{S_{\text{tx}}}{100}$$
+  4. **Goodput ($G$):** Rate of useful application payload delivered per virtual tick, excluding protocol headers and retransmissions:
+     $$G_{\text{frames}} = \frac{N_{\text{delivered}}}{T_{\text{elapsed}}} \text{ (frames/tick)}, \quad G_{\text{bits}} = \frac{\text{DeliveredBits}}{T_{\text{elapsed}}} \text{ (bits/tick)}$$
+- **Deterministic Test Scenarios Verified:**
+  - **Scenario A (Clean Transmission, 0 Retransmissions):** $T_t = 1, T_p = 5 \implies T_{\text{elapsed}} = 11$. Attempts = 1, delivered = 1, busy = 1 tick. $U = 1/11 = 9.1\%$, $S_{\text{tx}} = 100.0\%$, $U_{\text{useful}} = 9.1\%$, $G_{\text{frames}} = 0.091$.
+  - **Scenario B (Lost DATA + Timeout Retransmission):** $T_t = 1, T_p = 5, T_{\text{timeout}} = 16 \implies T_{\text{elapsed}} = 27$. Frame 0 dropped at $t=0$, timeout at $t=16$, retransmitted at $t=16$, delivered at $t=22$, ACK at $t=27$. Attempts = 2, delivered = 1, busy = 2 ticks. $U = 2/27 = 7.4\%$, $S_{\text{tx}} = 50.0\%$, $U_{\text{useful}} = 3.7\%$, $G_{\text{frames}} = 0.037$.
+  - **Scenario C (Lost ACK + Duplicate Suppression):** $T_t = 1, T_p = 5, T_{\text{timeout}} = 16 \implies T_{\text{elapsed}} = 27$. Frame 0 delivered at $t=6$, ACK dropped. Timeout at $t=16$, retransmitted at $t=16$, duplicate suppressed at receiver at $t=22$ (`duplicatesDiscarded = 1`), duplicate ACK delivered at $t=27$. Attempts = 2, delivered = 1, busy = 2 ticks. $U = 2/27 = 7.4\%$, $S_{\text{tx}} = 50.0\%$, $U_{\text{useful}} = 3.7\%$.
 
 ### Phase 6 Final Technical Audit Record
 - **Date:** 2026-10-20

@@ -37,6 +37,7 @@ export class Channel {
 
     this._transmissionCounter = 0;
     this._transmitterBusyUntil = 0;
+    this._totalBusyTicks = 0;
     this._history = [];
     this._maxHistorySize = 500;
 
@@ -88,6 +89,15 @@ export class Channel {
       throw new Error('Transmission delay must be a non-negative integer.');
     }
     this._transmissionDelay = delay;
+  }
+
+  /**
+   * Cumulative virtual ticks the transmitter was occupied serializing frames.
+   * 
+   * @returns {number}
+   */
+  getTotalBusyTicks() {
+    return this._totalBusyTicks;
   }
 
   /**
@@ -160,7 +170,15 @@ export class Channel {
       fault = this._faultRule(frameCopy, transmissionId);
     }
 
-    const action = fault?.action?.toUpperCase() || 'PASS';
+    const rawAction = fault?.action || fault?.outcome || 'PASS';
+    const actionStr = String(rawAction).toUpperCase();
+    const action = actionStr.includes('DROP')
+      ? 'DROP'
+      : actionStr.includes('CORRUPT')
+      ? 'CORRUPT'
+      : actionStr.includes('DELAY')
+      ? 'DELAY'
+      : 'PASS';
     let outcome = TransmissionOutcome.DELIVERED;
     let extraDelay = fault?.extraDelay || 0;
     let scheduledEventId = null;
@@ -180,6 +198,7 @@ export class Channel {
     const txStart = Math.max(startTick, this._transmitterBusyUntil);
     const txEnd = txStart + this._transmissionDelay;
     this._transmitterBusyUntil = txEnd;
+    this._totalBusyTicks += this._transmissionDelay;
 
     // 2. Propagation delay commences as bits flow; frame reception completes
     // when the trailing bit finishes traversing the link
@@ -239,6 +258,7 @@ export class Channel {
     this._history = [];
     this._transmissionCounter = 0;
     this._transmitterBusyUntil = 0;
+    this._totalBusyTicks = 0;
   }
 
   /**
