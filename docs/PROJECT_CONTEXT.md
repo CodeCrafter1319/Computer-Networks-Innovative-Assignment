@@ -44,12 +44,12 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 3: Discrete-Event Simulation Engine Core** (`EventQueue.js`, `SimulationEngine.js`, `Channel.js`, and comprehensive unit tests in `src/tests/engine.test.js` passing)
 - [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js` with RFC 1662 & generic modes, `charCount.js`, `FramingView.jsx`, and 34 unit tests in `src/tests/framing.test.js` passing)
 - [x] **Phase 5: Error Control Algorithms & Step-by-Step CRC Visualizer** (`crc.js` with educational modulo-2 division and named variants CRC-8/SMBUS & CRC-16/CCITT-FALSE, `checksum.js` with RFC 1071 16-bit 1's complement, `parity.js` with 1D/2D parity and single-bit localization, `errorInjection.js`, `ErrorControlView.jsx`, and 36 unit tests in `src/tests/errorControl.test.js` passing; 94 tests total across suite)
-- [x] **Phase 6: Flow Control, ARQ Protocols & Sliding Window Visualizer** (`FrameContract.js`, `sequenceMath.js`, `stopAndWait.js`, `goBackN.js`, `selectiveRepeat.js`, `FlowControlSimulator.js`, `FlowControlView.jsx`, and 26 unit tests in `src/tests/flowControl.test.js` passing; 120 tests total across suite)
+- [x] **Phase 6: Flow Control, ARQ Protocols & Sliding Window Visualizer** (`FrameContract.js`, `sequenceMath.js`, `stopAndWait.js`, `goBackN.js`, `selectiveRepeat.js`, `FlowControlSimulator.js`, `FlowControlView.jsx`, and 31 unit tests in `src/tests/flowControl.test.js` passing; 125 tests total across suite)
 
 ---
 
 ## 5. Known Issues
-- None. All framing algorithms, error-control algorithms, and flow-control ARQ protocols execute with 100% test pass rate (120/120 tests passing). Vite production build completes cleanly.
+- None. All framing algorithms, error-control algorithms, and flow-control ARQ protocols execute with 100% test pass rate (125/125 tests passing). Theoretical efficiency calculations audited and aligned. Vite production build completes cleanly.
 
 ---
 

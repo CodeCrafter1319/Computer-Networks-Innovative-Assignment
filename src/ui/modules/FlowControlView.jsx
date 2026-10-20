@@ -41,30 +41,41 @@ export default function FlowControlView() {
   const [playSpeedMs, setPlaySpeedMs] = useState(300); // ms per virtual tick
   const [traceFilter, setTraceFilter] = useState('ALL');
 
+  // Helper to create a simulator instance
+  const createSimulator = (proto, bitWidth, win, propDelay, toDuration, txDelay) => {
+    const maxWin = getMaxWindowSize(proto, bitWidth);
+    const safeWin = proto === FlowControlProtocol.STOP_AND_WAIT ? 1 : Math.min(win, maxWin);
+    const safeRxWin = proto === FlowControlProtocol.SELECTIVE_REPEAT ? safeWin : 1;
+    return new FlowControlSimulator({
+      protocol: proto,
+      m: bitWidth,
+      windowSize: safeWin,
+      rxWindowSize: safeRxWin,
+      propagationDelay: propDelay,
+      timeoutDuration: toDuration,
+      transmissionDelay: txDelay,
+    });
+  };
+
   // Simulator instance ref (persists across renders)
   const simulatorRef = useRef(null);
+  if (!simulatorRef.current) {
+    simulatorRef.current = createSimulator(protocol, m, windowSize, propagationDelay, timeoutDuration, transmissionDelay);
+  }
 
   // Snapshot of simulator state for rendering
-  const [snapshot, setSnapshot] = useState(null);
+  const [snapshot, setSnapshot] = useState(() => simulatorRef.current.getSnapshot());
 
-  // Initialize or re-create simulator when fundamental protocol configuration changes
+  // Re-create simulator when fundamental protocol configuration changes
   const initSimulator = (overrides = {}) => {
     const proto = overrides.protocol ?? protocol;
     const bitWidth = proto === FlowControlProtocol.STOP_AND_WAIT ? 1 : (overrides.m ?? m);
-    const maxWin = getMaxWindowSize(proto, bitWidth);
-    const win = proto === FlowControlProtocol.STOP_AND_WAIT ? 1 : Math.min(overrides.windowSize ?? windowSize, maxWin);
-    const rxWin = proto === FlowControlProtocol.SELECTIVE_REPEAT ? win : 1;
+    const win = overrides.windowSize ?? windowSize;
+    const propDelay = overrides.propagationDelay ?? propagationDelay;
+    const toDuration = overrides.timeoutDuration ?? timeoutDuration;
+    const txDelay = overrides.transmissionDelay ?? transmissionDelay;
 
-    const sim = new FlowControlSimulator({
-      protocol: proto,
-      m: bitWidth,
-      windowSize: win,
-      rxWindowSize: rxWin,
-      propagationDelay: overrides.propagationDelay ?? propagationDelay,
-      timeoutDuration: overrides.timeoutDuration ?? timeoutDuration,
-      transmissionDelay: overrides.transmissionDelay ?? transmissionDelay,
-    });
-
+    const sim = createSimulator(proto, bitWidth, win, propDelay, toDuration, txDelay);
     simulatorRef.current = sim;
     setSnapshot(sim.getSnapshot());
   };
@@ -469,11 +480,19 @@ export default function FlowControlView() {
         </div>
 
         <div className="fc-metric-card">
-          <span className="fc-metric-label">Channel Efficiency (η)</span>
+          <span className="fc-metric-label">Channel Utilization (η)</span>
           <span className="fc-metric-val" style={{ color: 'var(--accent-blue)' }}>
-            {metrics.measuredEfficiency}%
+            {metrics.channelUtilization}%
           </span>
-          <span className="fc-metric-sub">Theoretical: {metrics.theoreticalEfficiency}%</span>
+          <span className="fc-metric-sub">Ideal Bound: {metrics.theoreticalEfficiency}%</span>
+        </div>
+
+        <div className="fc-metric-card">
+          <span className="fc-metric-label">Transmission Goodput</span>
+          <span className="fc-metric-val" style={{ color: metrics.transmissionEfficiency < 100 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
+            {metrics.transmissionEfficiency}%
+          </span>
+          <span className="fc-metric-sub">Useful data / wire frames</span>
         </div>
 
         <div className="fc-metric-card">
@@ -890,6 +909,16 @@ export default function FlowControlView() {
           'in flight' inside the transmission medium at any instant. If the sender's window size W is smaller than 1 + 2a,
           the sender will exhaust its window and be forced to idle while the pipe is empty, wasting channel capacity.
           Selecting W ≥ 1 + 2a keeps the transmission pipe continuously full.
+        </div>
+
+        <div className="viva-q">Q5: What is the distinction between Channel Time Utilization and Transmission Goodput?</div>
+        <div className="viva-a">
+          Channel Utilization (η) measures link temporal occupancy: the fraction of elapsed virtual time that the medium
+          was actively transmitting useful payload bits, bounded by min(1, W / (1 + 2a)).
+          Transmission Goodput (Packet Efficiency) measures frame conservation: the fraction of all physical transmissions
+          (including retransmissions) that successfully delivered new data: FramesDelivered / TotalTransmissions.
+          In a noiseless link, Transmission Goodput is 100% even if Channel Utilization is low (e.g. 9.1% for Stop-and-Wait)
+          because no packets were wasted on retransmissions.
         </div>
       </div>
     </div>

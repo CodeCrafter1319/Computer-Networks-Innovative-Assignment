@@ -175,8 +175,22 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/flowControl.test.js` | Interactive frame corrupt in-flight | Inverts bits on scheduled packet; detected at receiver | Pass | **PASS** |
 | `src/tests/flowControl.test.js` | Simulator clean reconfiguration | Resets virtual clock to 0 and reinitializes with new protocol | Pass | **PASS** |
 | `src/tests/flowControl.test.js` | Constructor validation | Enforces non-null dependencies and illegal window bounds | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | SR sequence number wraparound | Continuous sliding window wraps sequence space across $2^m$ | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Channel utilization vs goodput | Distinguishes temporal occupancy from packet delivery efficiency | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | FlowControlView SSR smoke test | Renders full FlowControlView without reference errors | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | App shell with active tab SSR | Renders App shell with active Flow Control tab cleanly | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | All views component smoke test | Renders FramingView, ErrorControlView, and FlowControlView cleanly | Pass | **PASS** |
 
-**Summary:** 5 files, 120 tests passed, 0 failed.
+**Summary:** 5 files, 125 tests passed, 0 failed.
+
+### Phase 6 Final Technical Audit Record
+- **Date:** 2026-10-20
+- **Scope:** Technical audit of Stop-and-Wait, Go-Back-N, and Selective Repeat ARQ algorithms, window bounds, theoretical efficiency formulas, and UI rendering.
+- **Findings & Resolutions:**
+  1. *Theoretical Efficiency Formula vs Measured Metric Alignment:* Identified that previous `measuredEfficiency` calculated packet delivery ratio ($N_{delivered} / N_{transmitted}$), which resulted in 100% under noiseless transmission and clashed with theoretical channel time utilization ($\frac{1}{1+2a}$ or $\min(1, \frac{W}{1+2a})$). Resolved by splitting metrics into **Channel Time Utilization ($\eta$)** ($\frac{\text{Frames Delivered} \times T_t}{\text{Current Tick}}$) and **Transmission Goodput Ratio** ($\frac{\text{Frames Delivered}}{\text{Total Transmissions}}$).
+  2. *Selective Repeat Wraparound Coverage:* Added regression unit test verifying seamless window advancement and in-order delivery across $2^m$ modulo boundaries.
+  3. *UI Component SSR Verification:* Added component rendering smoke tests using `renderToString` confirming all three visualizer modules (`FramingView`, `ErrorControlView`, `FlowControlView`) and `App` render cleanly without runtime exceptions.
+  4. *Dev Server Probe:* Dev server tested and responding with HTTP status `200` and valid HTML payload.
 
 ---
 

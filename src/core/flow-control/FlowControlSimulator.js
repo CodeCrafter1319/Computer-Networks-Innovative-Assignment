@@ -337,14 +337,14 @@ export class FlowControlSimulator {
    * 
    * Formulas:
    * - Propagation time: Tp = propagationDelay
-   * - Transmission time: Tt = transmissionDelay (assume frame size / bandwidth = 1)
-   * - a = Tp / Tt
-   * - Stop-and-Wait efficiency: eta = 1 / (1 + 2*a)
-   * - Go-Back-N ideal efficiency: eta = min(1, W / (1 + 2*a))
-   * - Selective Repeat ideal efficiency: eta = min(1, W / (1 + 2*a))
+   * - Transmission time: Tt = transmissionDelay (ticks per frame on medium)
+   * - Dimensionless ratio: a = Tp / Tt
+   * - Round-trip time: RTT = 2 * Tp + Tt
+   * - Stop-and-Wait ideal channel utilization: eta = 1 / (1 + 2*a)
+   * - Sliding window (GBN / SR) ideal channel utilization: eta = min(1, W / (1 + 2*a))
    * - Bandwidth-Delay Product (in frames): BDP = 2 * a
    * 
-   * @returns {Object} Theoretical performance metrics
+   * @returns {Object} Performance metrics
    */
   getTheoreticalMetrics() {
     const Tp = this.config.propagationDelay;
@@ -353,8 +353,11 @@ export class FlowControlSimulator {
     const rtt = 2 * Tp + Tt;
     const W = this.config.windowSize;
 
+    const p = (this.config.protocol || '').toUpperCase();
+    const isSW = p === 'SW' || p === 'STOP_AND_WAIT';
+
     let theoreticalEfficiency = 0;
-    if (this.config.protocol === FlowControlProtocol.STOP_AND_WAIT) {
+    if (isSW) {
       theoreticalEfficiency = 1 / (1 + 2 * a);
     } else {
       // GBN and SR ideal efficiency without error
@@ -362,11 +365,18 @@ export class FlowControlSimulator {
     }
 
     const stats = this.protocolInstance.stats;
-    const measuredEfficiency = stats.totalTransmissions > 0
+    const currentTick = this.engine.getCurrentTick();
+
+    // 1. Channel Time Utilization (η): fraction of elapsed virtual time occupied by useful frame transmission
+    const channelUtilization = currentTick > 0
+      ? Math.min(1, (stats.framesDelivered * Tt) / currentTick)
+      : 0;
+
+    // 2. Transmission Efficiency / Goodput Ratio: fraction of on-wire frame transmissions that resulted in delivered payloads
+    const transmissionEfficiency = stats.totalTransmissions > 0
       ? (stats.framesDelivered / stats.totalTransmissions)
       : 0;
 
-    const currentTick = this.engine.getCurrentTick();
     const throughput = currentTick > 0
       ? (stats.framesDelivered / currentTick)
       : 0;
@@ -378,7 +388,9 @@ export class FlowControlSimulator {
       rtt,
       bandwidthDelayProduct: Number((2 * a).toFixed(2)),
       theoreticalEfficiency: Number((theoreticalEfficiency * 100).toFixed(1)),
-      measuredEfficiency: Number((measuredEfficiency * 100).toFixed(1)),
+      channelUtilization: Number((channelUtilization * 100).toFixed(1)),
+      transmissionEfficiency: Number((transmissionEfficiency * 100).toFixed(1)),
+      measuredEfficiency: Number((channelUtilization * 100).toFixed(1)), // Backward-compatible alias
       throughput: Number(throughput.toFixed(3)),
       optimalWindowSize: Math.ceil(1 + 2 * a),
     };

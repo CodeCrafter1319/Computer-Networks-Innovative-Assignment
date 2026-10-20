@@ -41,8 +41,9 @@
 - [x] **Task 6.4:** Implement Go-Back-N ARQ state machine with sliding window $W_s \le 2^m - 1$, cumulative ACKs, single timer for oldest frame, full window retransmission, and out-of-order discard (`goBackN.js`).
 - [x] **Task 6.5:** Implement Selective Repeat ARQ state machine with window constraints $W_s \le 2^{m-1}, W_r \le 2^{m-1}$, independent frame timers, selective ACKs, receiver out-of-order buffering, selective retransmissions, and previous-window re-acknowledgement (`selectiveRepeat.js`).
 - [x] **Task 6.6:** Implement `FlowControlSimulator.js` facade coordinating SimulationEngine, duplex channels, protocol instances, interactive in-flight frame drop/corrupt, trace logs, and theoretical metric calculations.
-- [x] **Task 6.7:** Write comprehensive Vitest unit tests in `src/tests/flowControl.test.js` (26 tests covering sequence math, lost frames, lost ACKs, timeouts, duplicate handling, selective buffering, and interactive controls; 120 tests passing across suite).
+- [x] **Task 6.7:** Write comprehensive Vitest unit tests in `src/tests/flowControl.test.js` (31 tests covering sequence math, lost frames, lost ACKs, timeouts, duplicate handling, selective buffering, and interactive controls; 125 tests passing across suite).
 - [x] **Task 6.8:** Build rich interactive `FlowControlView.jsx` with multi-lane animation track, click-to-corrupt / click-to-drop controls, sliding window slot visualizer with timer indicators, live event log, telemetry row, and Viva Helper panel.
+- [x] **Task 6.9:** Perform Phase 6 Technical Audit: audit efficiency calculations (channel time utilization vs transmission goodput), verify Selective Repeat wraparound, confirm SSR rendering across all modules, and probe Vite dev server.
 
 ---
 

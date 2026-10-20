@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import React from 'react';
+import { renderToString } from 'react-dom/server';
 import { SimulationEngine } from '../core/engine/SimulationEngine.js';
 import { Channel } from '../core/engine/Channel.js';
 import {
@@ -21,6 +23,10 @@ import { StopAndWaitARQ, SenderStatus } from '../core/flow-control/stopAndWait.j
 import { GoBackNARQ } from '../core/flow-control/goBackN.js';
 import { SelectiveRepeatARQ } from '../core/flow-control/selectiveRepeat.js';
 import { FlowControlSimulator, FlowControlProtocol } from '../core/flow-control/FlowControlSimulator.js';
+import FlowControlView from '../ui/modules/FlowControlView.jsx';
+import FramingView from '../ui/modules/FramingView.jsx';
+import ErrorControlView from '../ui/modules/ErrorControlView.jsx';
+import App from '../ui/App.jsx';
 
 describe('Sequence Math & Window Limits', () => {
   it('correctly calculates modulo for positive and negative values', () => {
@@ -156,6 +162,7 @@ describe('Stop-and-Wait ARQ Protocol', () => {
     }
 
     expect(sw.status).toBe(SenderStatus.IDLE);
+    expect(sw.timerEventId).toBeNull();
     expect(sw.senderSeq).toBe(1);
     expect(sw.stats.framesDelivered).toBe(1);
     expect(sw.stats.acksReceived).toBe(1);
@@ -399,6 +406,34 @@ describe('Selective Repeat ARQ Protocol', () => {
     expect(sr.stats.framesDelivered).toBe(1); // Delivered exactly once
     expect(sr.base).toBe(1);
   });
+
+  it('correctly handles sequence number wraparound across 2^m boundaries', () => {
+    // Send 7 frames to wrap around modulo 8
+    for (let i = 0; i < 7; i++) {
+      while (!sr.canSend()) {
+        engine.step();
+      }
+      sr.send(`SR Payload ${i}`);
+    }
+
+    while (!engine.getQueue().isEmpty()) {
+      engine.step();
+    }
+
+    expect(sr.stats.framesDelivered).toBe(7);
+    expect(sr.base).toBe(7);
+    expect(sr.rxBase).toBe(7);
+
+    // Next frame wraps sequence number to 0
+    sr.send('SR Wrap Frame 8');
+    while (!engine.getQueue().isEmpty()) {
+      engine.step();
+    }
+
+    expect(sr.stats.framesDelivered).toBe(8);
+    expect(sr.base).toBe(0);
+    expect(sr.rxBase).toBe(0);
+  });
 });
 
 describe('FlowControlSimulator Facade & Diagnostics', () => {
@@ -424,6 +459,25 @@ describe('FlowControlSimulator Facade & Diagnostics', () => {
     expect(snapshot.protocol).toBe('GBN');
     expect(snapshot.protocolState.receiver.deliveredCount).toBe(3);
     expect(snapshot.virtualTick).toBe(15);
+  });
+
+  it('distinguishes channel time utilization from transmission goodput', () => {
+    const sim = new FlowControlSimulator({
+      protocol: FlowControlProtocol.STOP_AND_WAIT,
+      propagationDelay: 5,
+      transmissionDelay: 1, // a = 5, RTT = 11 ticks, ideal eta = 1 / (1 + 10) = 9.09%
+    });
+
+    sim.send('Frame 1');
+    // Run until full round trip finishes (ACK received and sender returns to IDLE)
+    sim.runUntil(s => s.protocolInstance.status === 'IDLE', 30);
+
+    const metrics = sim.getTheoreticalMetrics();
+    expect(metrics.theoreticalEfficiency).toBe(9.1);
+    // Transmitted cleanly without loss -> transmission efficiency is 100%
+    expect(metrics.transmissionEfficiency).toBe(100);
+    // Channel utilization over round trip (1 transmission tick / 10 elapsed ticks) = 10%
+    expect(metrics.channelUtilization).toBe(10);
   });
 
   it('supports interactive frame dropping in-flight', () => {
@@ -501,5 +555,42 @@ describe('FlowControlSimulator Facade & Diagnostics', () => {
     const rev = new Channel(dummyEngine);
 
     expect(() => new GoBackNARQ(dummyEngine, fwd, rev, { m: 3, windowSize: 8 })).toThrow();
+  });
+});
+
+describe('FlowControlView Component Rendering Smoke Test', () => {
+  it('renders FlowControlView component cleanly without runtime ReferenceErrors', () => {
+    expect(() => {
+      const html = renderToString(React.createElement(FlowControlView));
+      expect(html).toContain('Flow Control &amp; Sliding Window Visualizer');
+      expect(html).toContain('Stop-and-Wait ARQ');
+      expect(html).toContain('Go-Back-N ARQ');
+      expect(html).toContain('Selective Repeat ARQ');
+      expect(html).toContain('Channel Utilization (η)');
+      expect(html).toContain('Transmission Goodput');
+      expect(html).toContain('Viva Helper &amp; Technical Theory');
+    }).not.toThrow();
+  });
+
+  it('renders App shell with active flow-control tab cleanly', () => {
+    expect(() => {
+      const html = renderToString(React.createElement(App));
+      expect(html).toContain('Data Link Layer Protocol Simulator');
+      expect(html).toContain('Phase 6: Flow Control &amp; ARQ Active');
+      expect(html).toContain('Flow Control &amp; Sliding Window Visualizer');
+    }).not.toThrow();
+  });
+
+  it('renders all views (Framing, ErrorControl, FlowControl) without runtime exceptions', () => {
+    expect(() => {
+      const framingHtml = renderToString(React.createElement(FramingView));
+      expect(framingHtml).toContain('HDLC Bit Stuffing &amp; Destuffing Simulator');
+
+      const errorHtml = renderToString(React.createElement(ErrorControlView));
+      expect(errorHtml).toContain('Cyclic Redundancy Check');
+
+      const fcHtml = renderToString(React.createElement(FlowControlView));
+      expect(fcHtml).toContain('Flow Control &amp; Sliding Window Visualizer');
+    }).not.toThrow();
   });
 });
