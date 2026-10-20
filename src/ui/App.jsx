@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import FramingView from './modules/FramingView.jsx';
 import ErrorControlView from './modules/ErrorControlView.jsx';
 import FlowControlView from './modules/FlowControlView.jsx';
+import MacView from './modules/MacView.jsx';
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState('flow-control');
+export default function App({ defaultTab = 'flow-control' } = {}) {
+  const [activeTab, setActiveTab] = useState(defaultTab);
 
   return (
     <div className="app-container">
@@ -12,12 +13,12 @@ export default function App() {
         <div className="app-title-group">
           <h1>
             <span>Data Link Layer Protocol Simulator</span>
-            <span className="badge badge-info">v0.4.0</span>
+            <span className="badge badge-info">v0.5.0</span>
           </h1>
           <p>Computer Networks Innovative Assignment — Semester V</p>
         </div>
         <div>
-          <span className="badge badge-success">Phase 6: Flow Control & ARQ Active</span>
+          <span className="badge badge-success">Phase 6: Flow Control &amp; ARQ Active | Phase 7: CSMA/CD Simulation Active</span>
         </div>
       </header>
 
@@ -45,6 +46,13 @@ export default function App() {
           <span>Flow Control & ARQ</span>
         </button>
         <button
+          className={`nav-tab ${activeTab === 'mac' ? 'active' : ''}`}
+          onClick={() => setActiveTab('mac')}
+        >
+          <span>📡</span>
+          <span>CSMA/CD Bus</span>
+        </button>
+        <button
           className={`nav-tab ${activeTab === 'overview' ? 'active' : ''}`}
           onClick={() => setActiveTab('overview')}
         >
@@ -57,6 +65,7 @@ export default function App() {
         {activeTab === 'framing' && <FramingView />}
         {activeTab === 'error-control' && <ErrorControlView />}
         {activeTab === 'flow-control' && <FlowControlView />}
+        {activeTab === 'mac' && <MacView />}
 
         {activeTab === 'overview' && (
           <div>
@@ -70,7 +79,7 @@ export default function App() {
                 unit tests for Framing, Error Control, Flow Control, and Medium Access.
               </p>
               <div className="mono-display">
-                Status: Framing, Error Control & Flow Control Verified | Package Manager: pnpm | Runtime: Vite + React + Vitest (120 tests)
+                Status: Framing, Error Control, Flow Control & CSMA/CD MAC Verified | Package Manager: pnpm | Runtime: Vite + React + Vitest (142+ tests)
               </div>
             </div>
 
@@ -93,7 +102,8 @@ export default function App() {
                     Stop-and-Wait ARQ, Go-Back-N ARQ, Selective Repeat ARQ
                   </li>
                   <li>
-                    <strong>Medium Access (Phase 7 Next):</strong> CSMA/CD Bus Contention & Exponential Backoff
+                    <strong style={{ color: 'var(--accent-emerald)' }}>✓ Medium Access (Phase 7 Complete):</strong>{' '}
+                    CSMA/CD Bus Contention, Collision Detection (2τ), Jamming & Truncated BEB
                   </li>
                   <li>
                     <strong>End-to-End Transmission Lab (Phase 8):</strong> Integrated sender-to-receiver pipeline

@@ -45,18 +45,16 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 4: Framing Algorithms & Interactive Visualizer** (`bitStuffing.js`, `byteStuffing.js` with RFC 1662 & generic modes, `charCount.js`, `FramingView.jsx`, and 34 unit tests in `src/tests/framing.test.js` passing)
 - [x] **Phase 5: Error Control Algorithms & Step-by-Step CRC Visualizer** (`crc.js` with educational modulo-2 division and named variants CRC-8/SMBUS & CRC-16/CCITT-FALSE, `checksum.js` with RFC 1071 16-bit 1's complement, `parity.js` with 1D/2D parity and single-bit localization, `errorInjection.js`, `ErrorControlView.jsx`, and 36 unit tests in `src/tests/errorControl.test.js` passing; 94 tests total across suite)
 - [x] **Phase 6: Flow Control, ARQ Protocols & Sliding Window Visualizer** (`FrameContract.js`, `sequenceMath.js`, `stopAndWait.js`, `goBackN.js`, `selectiveRepeat.js`, `FlowControlSimulator.js`, `FlowControlView.jsx`, audited channel utilization and goodput metrics, and 35 unit tests in `src/tests/flowControl.test.js` passing; 129 tests total across suite)
+- [x] **Phase 7: Medium Access Control — CSMA/CD Simulation** (`SharedBus.js` spatial broadcast medium, `backoff.js` IEEE 802.3 Truncated BEB, `csmaCd.js` 1-persistent station state machine, `CsmaCdSimulator.js` multi-station contention coordinator, `MacView.jsx` interactive bus visualizer with colliding wavefronts, jam sequence, presets, and Viva Helper panel; 17 unit tests in `src/tests/mac.test.js` passing; 146 tests total across suite)
 
 ---
 
 ## 5. Known Issues
-- None. All framing algorithms, error-control algorithms, and flow-control ARQ protocols execute with 100% test pass rate (129/129 tests passing). Channel serialization timing ($T_t + 2T_p$), channel occupancy, packet efficiency, and goodput formulas audited and confirmed numerically rigorous. Vite production build completes cleanly.
+- None. All framing algorithms, error-control algorithms, flow-control ARQ protocols, and CSMA/CD MAC protocols execute with 100% test pass rate (146/146 tests passing). Spatial bus propagation ($\tau_{\max} = 10$, slot time $2\tau = 20$), 1-persistent carrier sensing, collision detection, 32-bit jam signal emission, and Truncated BEB confirmed with deterministic test cases. Vite production build completes cleanly.
 
 ---
 
 ## 6. Exact Next Step
-- **Phase 7: Medium Access Control — CSMA/CD Simulation**
-  - Implement shared bus model with spatial distance and propagation delay.
-  - Implement 1-persistent / non-persistent carrier sense and collision detection within slot time ($2\tau$).
-  - Implement Jam signal propagation and Truncated Binary Exponential Backoff (BEB).
-  - Build interactive bus visualizer showing colliding wavefronts.
-  - Build interactive `FlowControlView.jsx` with animated multi-lane channel, packet-in-flight transitions, and click-to-corrupt / click-to-drop controls.
+- **Phase 8: End-to-End Transmission Lab**
+  - Integrated sender-to-receiver transmission pipeline: upper-layer payload $\to$ Framing $\to$ Error-Detection FCS $\to$ Flow Control (Stop-and-Wait / GBN / SR) $\to$ Transmission Channel with Fault Injection $\to$ Receiver Verification $\to$ Acknowledgement Delivery.
+  - Interactive stage-by-stage pipeline inspection with packet disassembly and oral exam walkthrough.

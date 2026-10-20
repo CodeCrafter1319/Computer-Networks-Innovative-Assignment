@@ -1,9 +1,9 @@
 # TASKS.md — Project Task Tracker
 
 ## 1. Current Status Overview
-- **Active Phase:** Phase 6 Complete (Awaiting User Sign-off to advance to Phase 7)
-- **Current Task:** Verification of Flow Control, ARQ Protocols & Sliding Window Visualizer
-- **Next Task:** Phase 7 — Medium Access Control — CSMA/CD Simulation
+- **Active Phase:** Phase 7 Complete (Awaiting User Sign-off to advance to Phase 8)
+- **Current Task:** Verification of CSMA/CD Bus Contention, Wavefront Propagation & Binary Exponential Backoff
+- **Next Task:** Phase 8 — Integrated End-to-End Transmission Lab (Flagship Mode)
 
 ---
 
@@ -45,17 +45,26 @@
 - [x] **Task 6.8:** Build rich interactive `FlowControlView.jsx` with multi-lane animation track, click-to-corrupt / click-to-drop controls, sliding window slot visualizer with timer indicators, live event log, telemetry row, and Viva Helper panel.
 - [x] **Task 6.9:** Perform Phase 6 Technical Audit: audit channel serialization timing ($T_t + 2T_p$), verify theoretical utilization formulas against discrete-event clock, confirm SSR rendering across all modules, and probe Vite dev server.
 - [x] **Task 6.10:** Perform Final Metric Semantics Audit: rigorously separate Channel Utilization ($U_{\text{channel}}$), Transmission Success Ratio ($S_{\text{tx}}$), Useful Utilization ($U_{\text{useful}}$), and Goodput ($G$); implement transmitter busy tracking in `Channel.js`; update UI metrics & Viva Q5 in `FlowControlView.jsx`; add deterministic regression tests for clean transmission, lost DATA retransmission, and lost ACK duplicate suppression (129 tests passing across suite).
+- [x] **Task 7.1:** Implement `src/core/mac/SharedBus.js` multi-station spatial linear broadcast medium with bilateral propagation delays, local carrier sensing, and active wavefront tracking.
+- [x] **Task 7.2:** Implement `src/core/mac/backoff.js` IEEE 802.3 Truncated Binary Exponential Backoff with exponent cap $k \le 10$, slot range calculation, retry limit (16 attempts), and deterministic test hooks.
+- [x] **Task 7.3:** Implement `src/core/mac/csmaCd.js` 1-persistent and non-persistent station state machine with concurrent carrier sensing, collision detection, immediate abortion, 32-bit jam signal emission, and backoff timer management.
+- [x] **Task 7.4:** Implement `src/core/mac/CsmaCdSimulator.js` facade coordinating 4 stations (A, B, C, D), spatial bus, 6 educational presets, and real-time telemetry metrics.
+- [x] **Task 7.5:** Write comprehensive Vitest unit tests in `src/tests/mac.test.js` (17 tests covering delay math, carrier sensing, collisions, jam signals, BEB calculations, max retry limits, contention resolution, and UI SSR smoke tests; 146 tests passing across suite).
+- [x] **Task 7.6:** Build interactive `MacView.jsx` visualizer with physical bus rail, animated propagating wavefronts, collision markers, station status cards, preset buttons, manual frame injector, live event log terminal, and 6-question CSMA/CD Viva Helper panel.
 
 ---
 
 ## 3. Pending Tasks (Roadmap)
 
-### Phase 7: Medium Access Control — CSMA/CD Simulation
-- [ ] **Task 7.1:** Implement multi-station shared bus model with spatial propagation delay.
-- [ ] **Task 7.2:** Implement Carrier Sense (1-persistent / non-persistent) and collision detection within slot time ($2\tau$).
-- [ ] **Task 7.3:** Implement Jam signal propagation and Truncated Binary Exponential Backoff (BEB).
-- [ ] **Task 7.4:** Write unit tests for contention resolution and collision detection.
-- [ ] **Task 7.5:** Build bus visualization showing transmission wavefronts and collision points.
+### Phase 8: End-to-End Transmission Lab (Flagship Mode)
+- [ ] **Task 8.1:** Design integrated multi-layer pipeline architecture connecting Framing, FCS Error-Control, and ARQ Flow-Control.
+- [ ] **Task 8.2:** Implement unified sender-to-receiver transmission controller with interactive packet inspection at each layer boundary.
+- [ ] **Task 8.3:** Build End-to-End Transmission Lab UI view with synchronized stage progression and fault injection controls.
+- [ ] **Task 8.4:** Write end-to-end regression tests verifying full round-trip delivery and error recovery.
+
+### Phase 9: Telemetry Dashboard, Viva Cheat Sheet & Presentation Hardening
+- [ ] **Task 9.1:** Build global comparative telemetry dashboard.
+- [ ] **Task 9.2:** Comprehensive project report, viva defense cheat sheet, and final cross-browser hardening.
 
 ### Phase 8: Telemetry, Protocol Comparison & Viva Helper
 - [ ] **Task 8.1:** Build real-time event-driven telemetry dashboard (throughput, loss rate, link efficiency).

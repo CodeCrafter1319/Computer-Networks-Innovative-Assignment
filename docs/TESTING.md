@@ -216,6 +216,33 @@ All networking logic in this project is developed under strict test-driven valid
   5. *UI Component SSR Verification:* Verified via `renderToString` that all three visualizer modules (`FramingView`, `ErrorControlView`, `FlowControlView`) and `App` render cleanly without runtime exceptions.
   6. *Dev Server Probe:* Dev server tested and responding with HTTP status `200` and valid HTML payload.
 
+### Phase 7: Medium Access Control — CSMA/CD Simulation & Backoff
+- **Date:** 2026-10-20
+- **Test Runner:** Vitest v3.2.7 (Node environment)
+- **Command:** `pnpm test`
+
+| Test Suite | Test Case Description | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `src/tests/mac.test.js` | BEB slot range calculations | $c=1 \to k=1 \implies [0, 1]$; $c=2 \to k=2 \implies [0, 3]$; $c=10 \to k=10 \implies [0, 1023]$ | Pass | **PASS** |
+| `src/tests/mac.test.js` | BEB retry limit enforcement | Retries permitted for $c \le 16$; $c=17$ aborts with `EXCESSIVE_COLLISIONS` | Pass | **PASS** |
+| `src/tests/mac.test.js` | BEB wait ticks calculation | Waiting duration = $r \times \text{slotTime}$ ($r \times 2\tau$) | Pass | **PASS** |
+| `src/tests/mac.test.js` | BEB argument validation | Rejects non-positive slotTime or non-positive attempt count | Pass | **PASS** |
+| `src/tests/mac.test.js` | Spatial propagation delay math | $\tau(0, 100) = 10$, $\tau(25, 75) = 5$, $\tau(0, 25) = 3$, $\tau(50, 50) = 0$ | Pass | **PASS** |
+| `src/tests/mac.test.js` | Local carrier sensing vs distant activity | Medium at transmitting tap is immediately busy; distant tap senses idle until wavefront arrives ($t=\tau$) | Pass | **PASS** |
+| `src/tests/mac.test.js` | Spatial wavefront generation | Computes $[x_{\text{left}}, x_{\text{right}}]$ boundaries for visualizer rail | Pass | **PASS** |
+| `src/tests/mac.test.js` | Clean single transmission | Station A transmits to D with 0 contention; delivered successfully | Pass | **PASS** |
+| `src/tests/mac.test.js` | Near-simultaneous collision detection | Stations A & D transmit within $\tau$; signals collide; both abort and emit 32-bit jam | Pass | **PASS** |
+| `src/tests/mac.test.js` | BEB backoff execution | Colliding stations calculate $k = \min(c, 10)$ and wait $r \times 2\tau$ ticks | Pass | **PASS** |
+| `src/tests/mac.test.js` | 1-Persistent sensing deferral | Station B senses A's busy transmission; defers until idle; transmits immediately | Pass | **PASS** |
+| `src/tests/mac.test.js` | Excessive collisions frame drop | Stations exceeding $c > 16$ abort transmission permanently | Pass | **PASS** |
+| `src/tests/mac.test.js` | Simulator preset loader | Presets (clean, collision, deferral, contention, BEB, excessive) initialize cleanly | Pass | **PASS** |
+| `src/tests/mac.test.js` | Full contention resolution cycle | Colliding stations resolve contention via BEB; both frames eventually delivered | Pass | **PASS** |
+| `src/tests/mac.test.js` | Reset and queue integrity | Resetting clears event queue, bus signals, and resets all stations to IDLE | Pass | **PASS** |
+| `src/tests/mac.test.js` | MacView SSR smoke test | Renders full MacView component cleanly without runtime ReferenceErrors | Pass | **PASS** |
+| `src/tests/mac.test.js` | App shell with active mac tab SSR | Renders App shell with active CSMA/CD Bus tab cleanly | Pass | **PASS** |
+
+**Summary:** 6 files, 146 tests passed, 0 failed.
+
 ---
 
 ## 3. Failed Tests Log
