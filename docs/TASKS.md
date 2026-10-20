@@ -1,9 +1,9 @@
 # TASKS.md — Project Task Tracker
 
 ## 1. Current Status Overview
-- **Active Phase:** Phase 7 Complete (Awaiting User Sign-off to advance to Phase 8)
-- **Current Task:** Verification of CSMA/CD Bus Contention, Wavefront Propagation & Binary Exponential Backoff
-- **Next Task:** Phase 8 — Integrated End-to-End Transmission Lab (Flagship Mode)
+- **Active Phase:** Phase 8 Complete (Awaiting User Sign-off to advance to Phase 9)
+- **Current Task:** Verification of Phase 8 Integrated End-to-End Data Link Layer Transmission Lab
+- **Next Task:** Phase 9 — Final Hardening, Edge-Case Audit & Presentation Package
 
 ---
 
@@ -52,25 +52,14 @@
 - [x] **Task 7.5:** Write comprehensive Vitest unit tests in `src/tests/mac.test.js` (17 tests covering delay math, carrier sensing, collisions, jam signals, BEB calculations, max retry limits, contention resolution, and UI SSR smoke tests; 146 tests passing across suite).
 - [x] **Task 7.6:** Build interactive `MacView.jsx` visualizer with physical bus rail, animated propagating wavefronts, collision markers, station status cards, preset buttons, manual frame injector, live event log terminal, and 6-question CSMA/CD Viva Helper panel.
 - [x] **Task 7.7:** Perform Phase 7 Standards Audit: enforce exact IEEE 802.3 `attemptLimit = 16` (1 initial + 15 retries), resolve attempt 17 off-by-one execution flaw, verify BEB exponent progression ($k=1 \implies [0, 1]$, $k=2 \implies [0, 3]$, $k=10 \implies [0, 1023]$), and add deterministic regression tests for 16-attempt discard and 16th-attempt delivery (148 tests passing across suite).
+- [x] **Task 8.1:** Design integrated multi-layer pipeline architecture connecting Upper-Layer Segmentation, Header Serialization, FCS Error-Control, Framing Transparency, and ARQ/MAC protocol dispatch (`TransmissionLabCoordinator.js`).
+- [x] **Task 8.2:** Implement Profile A (Point-to-Point ARQ: Stop-and-Wait, Go-Back-N, Selective Repeat over duplex channels with Drop, Corrupt, Delay fault injection) and Profile B (Shared-Medium Ethernet with CSMA/CD, collision detection, 32-bit jam, and Truncated BEB).
+- [x] **Task 8.3:** Build rich interactive `TransmissionLabView.jsx` visualizer with profile switcher, preset loader, 8-stage lifecycle breadcrumb stepper, byte-by-byte color-coded frame inspector, live event log, telemetry counters, and comprehensive 6-question Viva Helper panel.
+- [x] **Task 8.4:** Write comprehensive Vitest integration tests in `src/tests/transmissionLab.test.js` (20 tests covering segmentation, algorithm interoperability, clean transmission, bit corruption recovery, frame loss timeout, duplicate suppression, multi-frame windowing, CSMA/CD contention, and SSR rendering; 168 tests total passing across repository).
 
 ---
 
 ## 3. Pending Tasks (Roadmap)
-
-### Phase 8: End-to-End Transmission Lab (Flagship Mode)
-- [ ] **Task 8.1:** Design integrated multi-layer pipeline architecture connecting Framing, FCS Error-Control, and ARQ Flow-Control.
-- [ ] **Task 8.2:** Implement unified sender-to-receiver transmission controller with interactive packet inspection at each layer boundary.
-- [ ] **Task 8.3:** Build End-to-End Transmission Lab UI view with synchronized stage progression and fault injection controls.
-- [ ] **Task 8.4:** Write end-to-end regression tests verifying full round-trip delivery and error recovery.
-
-### Phase 9: Telemetry Dashboard, Viva Cheat Sheet & Presentation Hardening
-- [ ] **Task 9.1:** Build global comparative telemetry dashboard.
-- [ ] **Task 9.2:** Comprehensive project report, viva defense cheat sheet, and final cross-browser hardening.
-
-### Phase 8: Telemetry, Protocol Comparison & Viva Helper
-- [ ] **Task 8.1:** Build real-time event-driven telemetry dashboard (throughput, loss rate, link efficiency).
-- [ ] **Task 8.2:** Implement side-by-side protocol comparison mode (GBN vs. SR under variable error rate).
-- [ ] **Task 8.3:** Create Viva Helper / Theory drawer with formulas, protocol limitations, and examiner Q&A.
 
 ### Phase 9: Final Hardening, Edge-Case Audit & Presentation Package
 - [ ] **Task 9.1:** End-to-end regression testing and cross-browser visual verification.

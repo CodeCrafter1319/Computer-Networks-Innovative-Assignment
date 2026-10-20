@@ -3,6 +3,7 @@ import FramingView from './modules/FramingView.jsx';
 import ErrorControlView from './modules/ErrorControlView.jsx';
 import FlowControlView from './modules/FlowControlView.jsx';
 import MacView from './modules/MacView.jsx';
+import TransmissionLabView from './modules/TransmissionLabView.jsx';
 
 export default function App({ defaultTab = 'flow-control' } = {}) {
   const [activeTab, setActiveTab] = useState(defaultTab);
@@ -13,17 +14,24 @@ export default function App({ defaultTab = 'flow-control' } = {}) {
         <div className="app-title-group">
           <h1>
             <span>Data Link Layer Protocol Simulator</span>
-            <span className="badge badge-info">v0.5.0</span>
+            <span className="badge badge-info">v0.6.0</span>
           </h1>
           <p>Computer Networks Innovative Assignment — Semester V</p>
         </div>
         <div>
-          <span className="badge badge-success">Phase 6: Flow Control &amp; ARQ Active | Phase 7: CSMA/CD Simulation Active</span>
+          <span className="badge badge-success">Phase 6: Flow Control &amp; ARQ Active | Phase 7: CSMA/CD Simulation Active | Phase 8: End-to-End Transmission Lab Active</span>
         </div>
       </header>
 
       {/* Main Navigation Tabs */}
       <nav className="nav-tabs">
+        <button
+          className={`nav-tab ${activeTab === 'transmission-lab' ? 'active' : ''}`}
+          onClick={() => setActiveTab('transmission-lab')}
+        >
+          <span>🔬</span>
+          <span>End-to-End Transmission Lab</span>
+        </button>
         <button
           className={`nav-tab ${activeTab === 'framing' ? 'active' : ''}`}
           onClick={() => setActiveTab('framing')}
@@ -36,14 +44,14 @@ export default function App({ defaultTab = 'flow-control' } = {}) {
           onClick={() => setActiveTab('error-control')}
         >
           <span>🛡️</span>
-          <span>Error Control & CRC</span>
+          <span>Error Control &amp; CRC</span>
         </button>
         <button
           className={`nav-tab ${activeTab === 'flow-control' ? 'active' : ''}`}
           onClick={() => setActiveTab('flow-control')}
         >
           <span>🔄</span>
-          <span>Flow Control & ARQ</span>
+          <span>Flow Control &amp; ARQ</span>
         </button>
         <button
           className={`nav-tab ${activeTab === 'mac' ? 'active' : ''}`}
@@ -57,11 +65,12 @@ export default function App({ defaultTab = 'flow-control' } = {}) {
           onClick={() => setActiveTab('overview')}
         >
           <span>📋</span>
-          <span>Project Architecture & Overview</span>
+          <span>Project Architecture &amp; Overview</span>
         </button>
       </nav>
 
       <main className="app-main">
+        {activeTab === 'transmission-lab' && <TransmissionLabView />}
         {activeTab === 'framing' && <FramingView />}
         {activeTab === 'error-control' && <ErrorControlView />}
         {activeTab === 'flow-control' && <FlowControlView />}
@@ -106,7 +115,8 @@ export default function App({ defaultTab = 'flow-control' } = {}) {
                     CSMA/CD Bus Contention, Collision Detection (2τ), Jamming & Truncated BEB
                   </li>
                   <li>
-                    <strong>End-to-End Transmission Lab (Phase 8):</strong> Integrated sender-to-receiver pipeline
+                    <strong style={{ color: 'var(--accent-emerald)' }}>✓ End-to-End Transmission Lab (Phase 8 Complete):</strong>{' '}
+                    Integrated 8-Stage Transmission Lifecycle (Point-to-Point ARQ &amp; Shared-Medium CSMA/CD)
                   </li>
                 </ul>
               </div>

@@ -46,15 +46,15 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 5: Error Control Algorithms & Step-by-Step CRC Visualizer** (`crc.js` with educational modulo-2 division and named variants CRC-8/SMBUS & CRC-16/CCITT-FALSE, `checksum.js` with RFC 1071 16-bit 1's complement, `parity.js` with 1D/2D parity and single-bit localization, `errorInjection.js`, `ErrorControlView.jsx`, and 36 unit tests in `src/tests/errorControl.test.js` passing; 94 tests total across suite)
 - [x] **Phase 6: Flow Control, ARQ Protocols & Sliding Window Visualizer** (`FrameContract.js`, `sequenceMath.js`, `stopAndWait.js`, `goBackN.js`, `selectiveRepeat.js`, `FlowControlSimulator.js`, `FlowControlView.jsx`, audited channel utilization and goodput metrics, and 35 unit tests in `src/tests/flowControl.test.js` passing; 129 tests total across suite)
 - [x] **Phase 7: Medium Access Control — CSMA/CD Simulation** (`SharedBus.js` spatial broadcast medium, `backoff.js` IEEE 802.3 Truncated BEB with attemptLimit = 16, `csmaCd.js` 1-persistent station state machine, `CsmaCdSimulator.js` multi-station contention coordinator, `MacView.jsx` interactive bus visualizer with colliding wavefronts, jam sequence, presets, and Viva Helper panel; 19 unit tests in `src/tests/mac.test.js` passing; 148 tests total across suite)
+- [x] **Phase 8: End-to-End Transmission Lab** (`TransmissionLabCoordinator.js` decoupled integration coordinator, `TransmissionLabView.jsx` interactive pipeline view, Profile A: Point-to-Point ARQ with framing + FCS + duplex channels + fault injection, Profile B: Shared-Medium Ethernet with framing + FCS + CSMA/CD + collision detection + 32-bit jam + BEB, 8-stage lifecycle tracking from segmentation to delivery, live telemetry, and Viva Helper panel; 20 unit tests in `src/tests/transmissionLab.test.js` passing; 168 tests total across suite)
 
 ---
 
 ## 5. Known Issues
-- None. All framing algorithms, error-control algorithms, flow-control ARQ protocols, and CSMA/CD MAC protocols execute with 100% test pass rate (148/148 tests passing). IEEE 802.3 attempt limit (attemptLimit = 16), exact 16-attempt boundary, BEB exponent progression, spatial bus propagation ($\tau_{\max} = 10$, slot time $2\tau = 20$), 1-persistent carrier sensing, collision detection, and 32-bit jam signal emission confirmed with deterministic test cases. Vite production build completes cleanly.
+- None. All framing algorithms, error-control algorithms, flow-control ARQ protocols, CSMA/CD MAC protocols, and the integrated End-to-End Transmission Lab execute with 100% test pass rate (168/168 tests passing across 7 test suites). Vite production build completes cleanly.
 
 ---
 
 ## 6. Exact Next Step
-- **Phase 8: End-to-End Transmission Lab**
-  - Integrated sender-to-receiver transmission pipeline: upper-layer payload $\to$ Framing $\to$ Error-Detection FCS $\to$ Flow Control (Stop-and-Wait / GBN / SR) $\to$ Transmission Channel with Fault Injection $\to$ Receiver Verification $\to$ Acknowledgement Delivery.
-  - Interactive stage-by-stage pipeline inspection with packet disassembly and oral exam walkthrough.
+- **Phase 9: Final Hardening, Edge-Case Audit & Presentation Package**
+  - Final cross-browser verification, presentation readiness, comprehensive README and viva defense cheat sheet.

@@ -261,6 +261,37 @@ All networking logic in this project is developed under strict test-driven valid
   - `Scenario 9`: Verified that two stations colliding continuously make exactly 16 attempts, abort upon the 16th collision, and never attempt a 17th transmission.
   - `Scenario 10`: Verified that a station experiencing 15 collisions successfully delivers its frame on the 16th and final permitted attempt ($A = 16, c = 15, \text{delivered} = 1$).
 
+### Phase 8: Integrated End-to-End Transmission Lab
+- **Date:** 2026-10-20
+- **Test Runner:** Vitest v3.2.7 (Node environment)
+- **Command:** `pnpm test`
+- **Scope:** 8-stage transmission lifecycle, Profile A (Point-to-Point ARQ: SW, GBN, SR with framing & FCS over duplex channels with fault injection), Profile B (Shared-Medium Ethernet: CSMA/CD contention, collision detection, 32-bit jam, Truncated BEB, and frame delivery), presets, and React SSR smoke tests.
+
+| Test Suite | Test Case Description | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `src/tests/transmissionLab.test.js` | Payload segmentation | Splits long message into discrete chunks per `maxPayloadChunk` | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Empty payload handling | Rejects empty string with `EMPTY_PAYLOAD` safely | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | CRC-16 with Byte Stuffing | Computes 16-bit FCS over serialized header+payload and applies RFC 1662 escaping | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | CRC-8 with Bit Stuffing | Computes 8-bit FCS and applies HDLC zero-insertion after five `1`s | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Checksum with Character Count | Computes RFC 1071 16-bit 1's complement and encodes total-length header | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | 1D Parity Even mode | Generates valid even parity bit over wire byte stream | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Clean Stop-and-Wait transmission | Runs through all 8 stages cleanly; delivers payload and unblocks sender on ACK | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Bit corruption recovery | Receiver detects FCS mismatch; discards frame; sender times out; retransmission succeeds | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Frame drop recovery | Channel drops DATA frame; sender times out; retransmission succeeds | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Lost ACK duplicate suppression | Frame delivered once; ACK lost; sender times out; receiver discards duplicate and re-ACKs | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Multi-frame GBN sliding window | Pipelined transmission of 3 segmented frames with cumulative ACKs | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Profile B clean bus delivery | Station A transmits to D with zero contention; delivered cleanly | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Profile B contention & BEB backoff | Simultaneous transmissions collide; jam emitted; BEB resolves contention | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Profile B 16-attempt limit discard | Station reaches attempt limit (16) and transitions to excessive collisions drop | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Preset CLEAN_TRANSMISSION | Loads Profile A clean Stop-and-Wait scenario cleanly | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Preset BIT_CORRUPTION_RECOVERY | Loads Profile A bit corruption scenario and transmits frame | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Preset CSMA_CD_COLLISION_BEB | Loads Profile B collision and BEB contention scenario | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | TransmissionLabView SSR smoke test | Renders full TransmissionLabView component without runtime errors | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | App shell with active Transmission Lab | Renders App shell with active End-to-End Transmission Lab tab cleanly | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Multi-tab navigation regression | Preserves all earlier playground views (Framing, Error Control, Flow Control, MAC) | Pass | **PASS** |
+
+**Summary:** 7 files, 168 tests passed, 0 failed.
+
 ---
 
 ## 3. Failed Tests Log
