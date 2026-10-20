@@ -180,17 +180,20 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/flowControl.test.js` | FlowControlView SSR smoke test | Renders full FlowControlView without reference errors | Pass | **PASS** |
 | `src/tests/flowControl.test.js` | App shell with active tab SSR | Renders App shell with active Flow Control tab cleanly | Pass | **PASS** |
 | `src/tests/flowControl.test.js` | All views component smoke test | Renders FramingView, ErrorControlView, and FlowControlView cleanly | Pass | **PASS** |
+| `src/tests/flowControl.test.js` | Stop-and-Wait worked timing example | Verifies exact transmission, propagation, and ACK timing against worked cycle ($T_t + 2T_p$) with $\eta_{meas} = \eta_{theo} = 20.0\%$ | Pass | **PASS** |
 
-**Summary:** 5 files, 125 tests passed, 0 failed.
+**Summary:** 5 files, 126 tests passed, 0 failed.
 
 ### Phase 6 Final Technical Audit Record
 - **Date:** 2026-10-20
-- **Scope:** Technical audit of Stop-and-Wait, Go-Back-N, and Selective Repeat ARQ algorithms, window bounds, theoretical efficiency formulas, and UI rendering.
+- **Scope:** Technical audit of Stop-and-Wait, Go-Back-N, and Selective Repeat ARQ algorithms, window bounds, theoretical efficiency formulas, channel serialization timing, and UI rendering.
 - **Findings & Resolutions:**
-  1. *Theoretical Efficiency Formula vs Measured Metric Alignment:* Identified that previous `measuredEfficiency` calculated packet delivery ratio ($N_{delivered} / N_{transmitted}$), which resulted in 100% under noiseless transmission and clashed with theoretical channel time utilization ($\frac{1}{1+2a}$ or $\min(1, \frac{W}{1+2a})$). Resolved by splitting metrics into **Channel Time Utilization ($\eta$)** ($\frac{\text{Frames Delivered} \times T_t}{\text{Current Tick}}$) and **Transmission Goodput Ratio** ($\frac{\text{Frames Delivered}}{\text{Total Transmissions}}$).
-  2. *Selective Repeat Wraparound Coverage:* Added regression unit test verifying seamless window advancement and in-order delivery across $2^m$ modulo boundaries.
-  3. *UI Component SSR Verification:* Added component rendering smoke tests using `renderToString` confirming all three visualizer modules (`FramingView`, `ErrorControlView`, `FlowControlView`) and `App` render cleanly without runtime exceptions.
-  4. *Dev Server Probe:* Dev server tested and responding with HTTP status `200` and valid HTML payload.
+  1. *Channel Serialization & Frame Arrival Timing:* Identified that `Channel.js` previously scheduled frame arrivals strictly using `startTick + propagationDelay`, omitting frame transmission duration ($T_t$). For Stop-and-Wait with $T_p = 5, T_t = 1$, this caused the simulated round trip to finish at tick 10 ($2T_p$) rather than tick 11 ($T_t + 2T_p$), yielding a measured utilization of $10.0\%$ ($\frac{1}{10}$) that mismatched the theoretical $\frac{1}{1+2a} = \frac{1}{11} \approx 9.1\%$. Resolved by modeling physical transmission serialization in `Channel.js` (`txStart = Math.max(startTick, transmitterBusyUntil)`, `txEnd = txStart + transmissionDelay`, `deliveryTick = txEnd + propagationDelay`). For Stop-and-Wait, the DATA frame finishes transmission at $t=1$, completes reception at $t=6$, and ACK arrives at $t=11$. Measured utilization is organically $\frac{1 \times 1}{11} = 9.09\% \approx 9.1\%$, achieving exact numerical equality with theoretical $\frac{1}{1+2a} = 9.1\%$.
+  2. *Theoretical Efficiency Formula vs Measured Metric Alignment:* Split performance metrics into **Channel Time Utilization ($\eta$)** ($\frac{\text{Frames Delivered} \times T_t}{\text{Current Tick}}$) and **Transmission Goodput Ratio** ($\frac{\text{Frames Delivered}}{\text{Total Transmissions}}$).
+  3. *Worked Timing Example Regression Test:* Added deterministic regression test verifying tick-by-tick timing ($t=0 \to 2 \to 6 \to 10$) with $T_t = 2, T_p = 4, a = 2.0$, confirming measured utilization equals theoretical bound ($20.0\%$).
+  4. *Selective Repeat Wraparound Coverage:* Verified seamless window advancement and in-order delivery across $2^m$ modulo boundaries.
+  5. *UI Component SSR Verification:* Verified via `renderToString` that all three visualizer modules (`FramingView`, `ErrorControlView`, `FlowControlView`) and `App` render cleanly without runtime exceptions.
+  6. *Dev Server Probe:* Dev server tested and responding with HTTP status `200` and valid HTML payload.
 
 ---
 

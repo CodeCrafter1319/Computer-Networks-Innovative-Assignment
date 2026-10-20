@@ -22,6 +22,7 @@ export class Channel {
    * @param {import('./SimulationEngine.js').SimulationEngine} engine - The simulation engine instance.
    * @param {Object} [options={}] - Configuration options.
    * @param {number} [options.propagationDelay=5] - Base virtual ticks for propagation across medium.
+   * @param {number} [options.transmissionDelay=0] - Virtual ticks for serialization onto medium.
    * @param {string} [options.name='Channel'] - Identifier name for telemetry/logs.
    */
   constructor(engine, options = {}) {
@@ -31,9 +32,11 @@ export class Channel {
 
     this._engine = engine;
     this._propagationDelay = options.propagationDelay ?? 5;
+    this._transmissionDelay = options.transmissionDelay ?? 0;
     this._name = options.name || 'Channel';
 
     this._transmissionCounter = 0;
+    this._transmitterBusyUntil = 0;
     this._history = [];
     this._maxHistorySize = 500;
 
@@ -64,6 +67,27 @@ export class Channel {
       throw new Error('Propagation delay must be a non-negative integer.');
     }
     this._propagationDelay = delay;
+  }
+
+  /**
+   * Base frame serialization transmission delay in virtual ticks.
+   * 
+   * @returns {number}
+   */
+  getTransmissionDelay() {
+    return this._transmissionDelay;
+  }
+
+  /**
+   * Set base frame serialization transmission delay.
+   * 
+   * @param {number} delay - Non-negative integer.
+   */
+  setTransmissionDelay(delay) {
+    if (typeof delay !== 'number' || !Number.isInteger(delay) || delay < 0) {
+      throw new Error('Transmission delay must be a non-negative integer.');
+    }
+    this._transmissionDelay = delay;
   }
 
   /**
@@ -151,7 +175,16 @@ export class Channel {
       extraDelay = fault.extraDelay || this._propagationDelay;
     }
 
-    const totalDelay = this._propagationDelay + extraDelay;
+    // 1. Serialization delay on physical transmitter:
+    // If transmitter is already busy serializing a previous frame, queue behind it
+    const txStart = Math.max(startTick, this._transmitterBusyUntil);
+    const txEnd = txStart + this._transmissionDelay;
+    this._transmitterBusyUntil = txEnd;
+
+    // 2. Propagation delay commences as bits flow; frame reception completes
+    // when the trailing bit finishes traversing the link
+    const baseDelay = (txEnd - startTick) + this._propagationDelay;
+    const totalDelay = baseDelay + extraDelay;
     const deliveryTick = startTick + totalDelay;
 
     const record = {
@@ -161,6 +194,10 @@ export class Channel {
       transmittedFrame: frameCopy,
       outcome,
       startTick,
+      txStartTick: txStart,
+      txEndTick: txEnd,
+      transmissionDelay: this._transmissionDelay,
+      propagationDelay: this._propagationDelay,
       deliveryTick: outcome === TransmissionOutcome.DROPPED ? null : deliveryTick,
       totalDelay: outcome === TransmissionOutcome.DROPPED ? null : totalDelay,
       eventId: null,
@@ -201,6 +238,7 @@ export class Channel {
   clearHistory() {
     this._history = [];
     this._transmissionCounter = 0;
+    this._transmitterBusyUntil = 0;
   }
 
   /**

@@ -476,8 +476,65 @@ describe('FlowControlSimulator Facade & Diagnostics', () => {
     expect(metrics.theoreticalEfficiency).toBe(9.1);
     // Transmitted cleanly without loss -> transmission efficiency is 100%
     expect(metrics.transmissionEfficiency).toBe(100);
-    // Channel utilization over round trip (1 transmission tick / 10 elapsed ticks) = 10%
-    expect(metrics.channelUtilization).toBe(10);
+    // Channel utilization over round trip (1 transmission tick / 11 elapsed ticks) = 9.09% -> 9.1%
+    expect(metrics.channelUtilization).toBe(9.1);
+    expect(metrics.channelUtilization).toBe(metrics.theoreticalEfficiency);
+  });
+
+  it('verifies exact Stop-and-Wait channel utilization against a worked timing example with explicit assumptions', () => {
+    // Explicit assumptions:
+    // 1. Data frame transmission time: Tt = 2 virtual ticks
+    // 2. Link one-way propagation delay: Tp = 4 virtual ticks
+    // 3. ACK transmission time: Tack = 0 virtual ticks (negligible control frame)
+    // 4. Processing delay: Tproc = 0 virtual ticks
+    // 5. Parameter a = Tp / Tt = 4 / 2 = 2.0
+    // 6. Expected cycle duration: Tcycle = Tt + Tp + Tack + Tp = 2 + 4 + 0 + 4 = 10 ticks
+    // 7. Theoretical ideal utilization: eta = 1 / (1 + 2*a) = 1 / (1 + 4) = 1/5 = 0.20 = 20.0%
+    const sim = new FlowControlSimulator({
+      protocol: FlowControlProtocol.STOP_AND_WAIT,
+      propagationDelay: 4,
+      transmissionDelay: 2,
+      timeoutDuration: 20,
+    });
+
+    expect(sim.engine.getCurrentTick()).toBe(0);
+
+    // At t = 0: Sender begins transmission of Frame 0
+    sim.send('Worked Example Frame');
+
+    // Transmitter is active during [0, 2]
+    expect(sim.forwardChannel.getHistory()[0].startTick).toBe(0);
+    expect(sim.forwardChannel.getHistory()[0].txStartTick).toBe(0);
+    expect(sim.forwardChannel.getHistory()[0].txEndTick).toBe(2);
+    // Trailing bit reaches receiver at txEnd + Tp = 2 + 4 = 6
+    expect(sim.forwardChannel.getHistory()[0].deliveryTick).toBe(6);
+
+    // Step until Frame 0 is delivered at receiver: exactly at t = 6
+    sim.stepTicks(6);
+    expect(sim.engine.getCurrentTick()).toBe(6);
+    expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
+
+    // Receiver transmits ACK at t = 6; propagates in Tp = 4 ticks, arriving at t = 10
+    expect(sim.reverseChannel.getHistory()[0].startTick).toBe(6);
+    expect(sim.reverseChannel.getHistory()[0].deliveryTick).toBe(10);
+
+    // Step until ACK arrives and sender returns to IDLE: exactly at t = 10
+    sim.stepTicks(4);
+    expect(sim.engine.getCurrentTick()).toBe(10);
+    expect(sim.protocolInstance.status).toBe(SenderStatus.IDLE);
+
+    // Verify exact numerical utilization:
+    // Useful transmission time = 1 frame * 2 ticks = 2 ticks
+    // Total elapsed time = 10 ticks
+    // Measured utilization = 2 / 10 = 20.0%
+    // Theoretical utilization = 1 / (1 + 2 * (4/2)) = 1 / 5 = 20.0%
+    const metrics = sim.getTheoreticalMetrics();
+    expect(metrics.Tp).toBe(4);
+    expect(metrics.Tt).toBe(2);
+    expect(metrics.a).toBe(2);
+    expect(metrics.theoreticalEfficiency).toBe(20.0);
+    expect(metrics.channelUtilization).toBe(20.0);
+    expect(metrics.channelUtilization).toBe(metrics.theoreticalEfficiency);
   });
 
   it('supports interactive frame dropping in-flight', () => {

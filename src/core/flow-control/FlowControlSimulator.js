@@ -44,10 +44,12 @@ export class FlowControlSimulator {
     this.engine = new SimulationEngine();
     this.forwardChannel = new Channel(this.engine, {
       propagationDelay: this.config.propagationDelay,
+      transmissionDelay: this.config.transmissionDelay,
       name: 'Forward (Data)',
     });
     this.reverseChannel = new Channel(this.engine, {
       propagationDelay: this.config.propagationDelay,
+      transmissionDelay: 0,
       name: 'Reverse (ACK)',
     });
 
@@ -136,9 +138,11 @@ export class FlowControlSimulator {
     this.forwardChannel.clearHistory();
     this.forwardChannel.clearFaultPlan();
     this.forwardChannel.setPropagationDelay(this.config.propagationDelay);
+    this.forwardChannel.setTransmissionDelay(this.config.transmissionDelay);
     this.reverseChannel.clearHistory();
     this.reverseChannel.clearFaultPlan();
     this.reverseChannel.setPropagationDelay(this.config.propagationDelay);
+    this.reverseChannel.setTransmissionDelay(0);
     this.eventLogs = [];
     this._initProtocol();
   }
