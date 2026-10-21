@@ -744,7 +744,9 @@ export class TransmissionLabCoordinator {
       deliveryTick: record.deliveryTick,
       totalDelay: record.totalDelay,
       outcome: record.outcome,
-      faultApplied: record.faultApplied || 'NONE',
+      faultApplied: typeof record.faultApplied === 'object' && record.faultApplied !== null
+        ? (record.faultApplied.action || 'FAULT')
+        : (record.faultApplied || 'NONE'),
       corrupted: frame.corrupted,
     };
   }
@@ -1114,11 +1116,7 @@ export class TransmissionLabCoordinator {
       if (predicate(this)) {
         return true;
       }
-      if (this.engine.getQueue().isEmpty()) {
-        this.stepTick();
-      } else {
-        this.stepEvent();
-      }
+      this.stepTick();
     }
     return predicate(this);
   }

@@ -235,6 +235,49 @@ export class FlowControlSimulator {
   }
 
   /**
+   * Determine if the current flow control transmission cycle is settled.
+   * 
+   * @returns {boolean}
+   */
+  isComplete() {
+    const queueEmpty = this.engine ? this.engine.getQueue().isEmpty() : true;
+    const fInFlight = this.forwardChannel ? this.forwardChannel.getInFlightFrames().length === 0 : true;
+    const rInFlight = this.reverseChannel ? this.reverseChannel.getInFlightFrames().length === 0 : true;
+    let senderIdle = false;
+    const p = (this.config.protocol || '').toUpperCase();
+    if (p === 'SW' || p === 'STOP_AND_WAIT') {
+      senderIdle = this.protocolInstance ? this.protocolInstance.status === 'IDLE' : true;
+    } else if (p === 'GBN' || p === 'GO_BACK_N') {
+      senderIdle = this.protocolInstance ? this.protocolInstance.base === this.protocolInstance.nextSeq : true;
+    } else if (p === 'SR' || p === 'SELECTIVE_REPEAT') {
+      senderIdle = this.protocolInstance ? this.protocolInstance.buffer.size === 0 : true;
+    }
+    return queueEmpty && fInFlight && rInFlight && senderIdle;
+  }
+
+  /**
+   * Run simulation to completion by stepping virtual clock ticks until isComplete() or maxTicks reached.
+   * 
+   * @param {number} [maxTicks=150]
+   * @returns {{ completed: boolean, ticksRun: number, finalTick: number }}
+   */
+  runToCompletion(maxTicks = 150) {
+    let ticksRun = 0;
+    while (ticksRun < maxTicks) {
+      if (this.isComplete()) {
+        break;
+      }
+      this.stepTick();
+      ticksRun++;
+    }
+    return {
+      completed: this.isComplete(),
+      ticksRun,
+      finalTick: this.engine.getCurrentTick(),
+    };
+  }
+
+  /**
    * Interactively drop a frame that is currently in-flight in a channel.
    * Finds the scheduled event in the engine queue and cancels it.
    * 

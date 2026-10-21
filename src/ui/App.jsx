@@ -18,9 +18,6 @@ export default function App({ defaultTab = 'flow-control' } = {}) {
           </h1>
           <p>Computer Networks Innovative Assignment — Semester V</p>
         </div>
-        <div>
-          <span className="badge badge-success">Phase 6: Flow Control &amp; ARQ Active | Phase 7: CSMA/CD Simulation Active | Phase 8: End-to-End Transmission Lab Active | Phase 9: Hardened &amp; Complete</span>
-        </div>
       </header>
 
       {/* Main Navigation Tabs */}

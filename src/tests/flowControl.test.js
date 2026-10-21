@@ -768,7 +768,7 @@ describe('FlowControlView Component Rendering Smoke Test', () => {
     expect(() => {
       const html = renderToString(React.createElement(App));
       expect(html).toContain('Data Link Layer Protocol Simulator');
-      expect(html).toContain('Phase 6: Flow Control &amp; ARQ Active');
+      expect(html).toContain('Computer Networks Innovative Assignment');
       expect(html).toContain('Flow Control &amp; Sliding Window Visualizer');
     }).not.toThrow();
   });
@@ -784,5 +784,36 @@ describe('FlowControlView Component Rendering Smoke Test', () => {
       const fcHtml = renderToString(React.createElement(FlowControlView));
       expect(fcHtml).toContain('Flow Control &amp; Sliding Window Visualizer');
     }).not.toThrow();
+  });
+
+  it('renders the visual learning canvas, message input, concrete queue, and live narration in FlowControlView', () => {
+    const html = renderToString(React.createElement(FlowControlView));
+    expect(html).toContain('Message Payload &amp; Discrete Frame Creation');
+    expect(html).toContain('Concrete Segmented Frame Queue');
+    expect(html).toContain('Live Wire Narration');
+    expect(html).toContain('Physical Duplex Link');
+    expect(html).toContain('Station A (Sender)');
+    expect(html).toContain('Station B (Receiver)');
+    expect(html).toContain('Sender Sliding Window');
+    expect(html).toContain('Receiver Window');
+    expect(html).toContain('Educational Scenario Presets');
+    expect(html).toContain('Sliding Window Mathematics &amp; Protocol Theory');
+  });
+
+  it('FlowControlSimulator isComplete and runToCompletion drain events cleanly', () => {
+    const sim = new FlowControlSimulator({
+      protocol: FlowControlProtocol.GO_BACK_N,
+      m: 3,
+      windowSize: 4,
+    });
+    expect(sim.isComplete()).toBe(true);
+
+    sim.send('Frame 0');
+    expect(sim.isComplete()).toBe(false);
+
+    const completion = sim.runToCompletion(100);
+    expect(completion.completed).toBe(true);
+    expect(sim.isComplete()).toBe(true);
+    expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
   });
 });

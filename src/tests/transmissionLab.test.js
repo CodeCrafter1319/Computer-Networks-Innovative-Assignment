@@ -301,10 +301,18 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
       expect(coordinator.getAllFrames().length).toBe(1);
     });
 
-    it('loads BIT_CORRUPTION_RECOVERY preset correctly', () => {
+    it('loads BIT_CORRUPTION_RECOVERY preset correctly and renders UI through every tick without error', () => {
       coordinator.loadPreset(LabPreset.BIT_CORRUPTION_RECOVERY);
       expect(coordinator.config.profile).toBe(ProfileType.PROFILE_A);
       expect(coordinator.getAllFrames().length).toBe(1);
+      for (let i = 0; i < 40; i++) {
+        coordinator.stepTick();
+        expect(() => {
+          renderToString(React.createElement(TransmissionLabView, { coordinator }));
+        }).not.toThrow();
+      }
+      expect(coordinator.isComplete()).toBe(true);
+      expect(coordinator.deliveredMessages).toEqual(['TEST CORRUPT']);
     });
 
     it('loads CSMA_CD_COLLISION_BEB preset correctly', () => {
@@ -321,6 +329,48 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
       expect(html).toContain('Profile B: Shared-Medium CSMA/CD');
       expect(html).toContain('Explicit 8-Stage Transmission Lifecycle');
       expect(html).toContain('Live Transmission Telemetry');
+    });
+
+    it('renders TransmissionLabView through manual Corrupt DATA fault without throwing object-as-child errors', () => {
+      const coord = new TransmissionLabCoordinator({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+      });
+      coord.sendMessage('CRASH_AUDIT');
+      coord.setNextDataFault('CORRUPT');
+
+      // Tick through forward channel transit, corruption at receiver, and timeout recovery
+      for (let t = 0; t < 35; t++) {
+        coord.stepTick();
+        expect(() => {
+          renderToString(React.createElement(TransmissionLabView, { coordinator: coord }));
+        }).not.toThrow();
+      }
+      expect(coord.isComplete()).toBe(true);
+      expect(coord.deliveredMessages).toEqual(['CRASH_AUDIT']);
+    });
+
+    it('renders TransmissionLabView through Drop DATA and Drop ACK faults safely', () => {
+      const coord = new TransmissionLabCoordinator({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+      });
+      coord.sendMessage('FAULT_TEST');
+      coord.setNextDataFault('DROP');
+      for (let t = 0; t < 25; t++) {
+        coord.stepTick();
+        expect(() => {
+          renderToString(React.createElement(TransmissionLabView, { coordinator: coord }));
+        }).not.toThrow();
+      }
+
+      coord.setNextAckFault('DROP');
+      for (let t = 0; t < 25; t++) {
+        coord.stepTick();
+        expect(() => {
+          renderToString(React.createElement(TransmissionLabView, { coordinator: coord }));
+        }).not.toThrow();
+      }
     });
 
     it('renders App with defaultTab="transmission-lab"', () => {

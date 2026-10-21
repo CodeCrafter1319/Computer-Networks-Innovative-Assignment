@@ -22,22 +22,22 @@ import {
   LabPreset,
 } from '../../core/transmission/TransmissionLabCoordinator.js';
 
-export default function TransmissionLabView() {
+export default function TransmissionLabView({ initialProfile = ProfileType.PROFILE_A, coordinator = null } = {}) {
   // Profile Selection: Profile A (Point-to-Point ARQ) vs Profile B (Shared-Medium CSMA/CD)
-  const [profile, setProfile] = useState(ProfileType.PROFILE_A);
+  const [profile, setProfile] = useState(coordinator ? coordinator.config.profile : initialProfile);
 
   // Profile A Configuration
-  const [protocol, setProtocol] = useState(FlowProtocol.STOP_AND_WAIT);
-  const [fcsType, setFcsType] = useState(FcsAlgorithm.CRC_16);
-  const [framingType, setFramingType] = useState(FramingAlgorithm.BYTE_STUFFING);
-  const [maxPayloadChunk, setMaxPayloadChunk] = useState(8);
-  const [windowSize, setWindowSize] = useState(4);
-  const [propagationDelay, setPropagationDelay] = useState(4);
-  const [timeoutDuration, setTimeoutDuration] = useState(14);
+  const [protocol, setProtocol] = useState(coordinator ? coordinator.config.protocol : FlowProtocol.STOP_AND_WAIT);
+  const [fcsType, setFcsType] = useState(coordinator ? coordinator.config.fcsType : FcsAlgorithm.CRC_16);
+  const [framingType, setFramingType] = useState(coordinator ? coordinator.config.framingType : FramingAlgorithm.BYTE_STUFFING);
+  const [maxPayloadChunk, setMaxPayloadChunk] = useState(coordinator ? coordinator.config.maxPayloadChunk : 8);
+  const [windowSize, setWindowSize] = useState(coordinator ? coordinator.config.windowSize : 4);
+  const [propagationDelay, setPropagationDelay] = useState(coordinator ? coordinator.config.propagationDelay : 4);
+  const [timeoutDuration, setTimeoutDuration] = useState(coordinator ? coordinator.config.timeoutDuration : 14);
 
   // Profile B Configuration
-  const [sourceStation, setSourceStation] = useState('A');
-  const [destStation, setDestStation] = useState('D');
+  const [sourceStation, setSourceStation] = useState(coordinator ? coordinator.config.sourceStation : 'A');
+  const [destStation, setDestStation] = useState(coordinator ? coordinator.config.destStation : 'D');
 
   // Message Input
   const [messageInput, setMessageInput] = useState('NETWORKS LAB 2026');
@@ -49,7 +49,9 @@ export default function TransmissionLabView() {
 
   // Coordinator Instance Ref
   const coordinatorRef = useRef(null);
-  if (!coordinatorRef.current) {
+  if (coordinator) {
+    coordinatorRef.current = coordinator;
+  } else if (!coordinatorRef.current) {
     coordinatorRef.current = new TransmissionLabCoordinator({
       profile,
       protocol,
@@ -1250,9 +1252,17 @@ export default function TransmissionLabView() {
               <div className="card" style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', padding: '1rem', margin: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <strong style={{ color: 'var(--accent-rose)', fontSize: '0.85rem' }}>Stage 6: Channel Transit</strong>
-                  <span className={`badge ${selectedInspection.stage6?.faultApplied !== 'NONE' ? 'badge-danger' : 'badge-info'}`}>
-                    {selectedInspection.stage6?.faultApplied || 'TRANSIT'}
-                  </span>
+                  {(() => {
+                    const rawFault = selectedInspection.stage6?.faultApplied;
+                    const faultStr = typeof rawFault === 'object' && rawFault !== null
+                      ? (rawFault.action || 'FAULT')
+                      : (rawFault || 'NONE');
+                    return (
+                      <span className={`badge ${faultStr !== 'NONE' ? 'badge-danger' : 'badge-info'}`}>
+                        {faultStr === 'NONE' ? 'TRANSIT' : faultStr}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
                   {selectedInspection.stage6 ? (
@@ -1262,7 +1272,11 @@ export default function TransmissionLabView() {
                   )}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  Propagation Delay: {propagationDelay} ticks. Fault: {selectedInspection.stage6?.faultApplied || 'NONE'}.
+                  Propagation Delay: {propagationDelay} ticks. Fault: {
+                    typeof selectedInspection.stage6?.faultApplied === 'object' && selectedInspection.stage6?.faultApplied !== null
+                      ? (selectedInspection.stage6.faultApplied.action || 'FAULT')
+                      : (selectedInspection.stage6?.faultApplied || 'NONE')
+                  }.
                 </div>
               </div>
 

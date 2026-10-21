@@ -487,7 +487,7 @@ describe('MacView Component Rendering Smoke Test', () => {
     expect(() => {
       const html = renderToString(React.createElement(App, { defaultTab: 'mac' }));
       expect(html).toContain('Data Link Layer Protocol Simulator');
-      expect(html).toContain('Phase 7: CSMA/CD Simulation Active');
+      expect(html).toContain('CSMA/CD Bus');
       expect(html).toContain('Medium Access Control');
     }).not.toThrow();
   });
