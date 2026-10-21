@@ -466,4 +466,158 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
       expect(reassembled).toBe(multiline);
     });
   });
+
+  describe('Multi-Frame Queue Consistency & ACK Lifecycle (Regression Suite)', () => {
+    it('segments NETWORKS LAB 2026 with chunk size 8 into exactly 3 frames with exact strings and space preservation', () => {
+      coordinator.reset({ maxPayloadChunk: 8 });
+      const chunks = coordinator.segmentPayload('NETWORKS LAB 2026');
+
+      expect(chunks.length).toBe(3);
+      expect(chunks[0].chunkText).toBe('NETWORKS');
+      expect(chunks[0].byteLength).toBe(8);
+
+      expect(chunks[1].chunkText).toBe(' LAB 202');
+      expect(chunks[1].byteLength).toBe(8);
+      expect(chunks[1].chunkText.startsWith(' ')).toBe(true);
+
+      expect(chunks[2].chunkText).toBe('6');
+      expect(chunks[2].byteLength).toBe(1);
+
+      const reassembled = chunks.map((c) => c.chunkText).join('');
+      expect(reassembled).toBe('NETWORKS LAB 2026');
+    });
+
+    it('displays exactly 3 frames in concrete queue immediately upon sendMessage with correct WAITING / IN_TRANSIT statuses', () => {
+      coordinator.reset({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        maxPayloadChunk: 8,
+      });
+
+      const res = coordinator.sendMessage('NETWORKS LAB 2026');
+      expect(res.success).toBe(true);
+      expect(res.chunks.length).toBe(3);
+
+      const allFrames = coordinator.getAllFrames();
+      expect(allFrames.length).toBe(3);
+
+      // Frame 0: actively in transit on forward channel
+      expect(allFrames[0].status).toBe('IN_TRANSIT');
+      expect(allFrames[0].payloadText).toBe('NETWORKS');
+      expect(allFrames[0].seq).toBe(0);
+
+      // Frame 1: queued at sender station waiting for Frame 0 ACK
+      expect(allFrames[1].status).toBe('WAITING');
+      expect(allFrames[1].payloadText).toBe(' LAB 202');
+
+      // Frame 2: queued at sender station waiting for Frame 1 ACK
+      expect(allFrames[2].status).toBe('WAITING');
+      expect(allFrames[2].payloadText).toBe('6');
+    });
+
+    it('drives sequential Stop-and-Wait ACK lifecycle and window opening for multi-frame queue', () => {
+      coordinator.reset({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        maxPayloadChunk: 8,
+        propagationDelay: 4,
+        timeoutDuration: 16,
+      });
+
+      coordinator.sendMessage('NETWORKS LAB 2026');
+
+      // Step until Frame 0 arrives at receiver (t = txDelay + propDelay = 1 + 4 = 5)
+      coordinator.runUntil((c) => c.getTelemetry().currentTick >= 5);
+      let frames = coordinator.getAllFrames();
+      expect(frames[0].status).toBe('RECEIVED');
+      expect(frames[1].status).toBe('WAITING');
+      expect(frames[2].status).toBe('WAITING');
+
+      // Step until Frame 0 ACK reaches sender (t = 5 + 4 = 9)
+      coordinator.runUntil((c) => c.getTelemetry().currentTick >= 10);
+      frames = coordinator.getAllFrames();
+      expect(frames[0].status).toBe('ACKNOWLEDGED');
+      expect(frames[1].status).toBe('IN_TRANSIT');
+      expect(frames[2].status).toBe('WAITING');
+
+      // Step until Frame 1 arrives at receiver (t = 9 + 5 = 14)
+      coordinator.runUntil((c) => c.getTelemetry().currentTick >= 15);
+      frames = coordinator.getAllFrames();
+      expect(frames[0].status).toBe('ACKNOWLEDGED');
+      expect(frames[1].status).toBe('RECEIVED');
+      expect(frames[2].status).toBe('WAITING');
+
+      // Step until Frame 1 ACK reaches sender (t = 14 + 4 = 18)
+      coordinator.runUntil((c) => c.getTelemetry().currentTick >= 19);
+      frames = coordinator.getAllFrames();
+      expect(frames[0].status).toBe('ACKNOWLEDGED');
+      expect(frames[1].status).toBe('ACKNOWLEDGED');
+      expect(frames[2].status).toBe('IN_TRANSIT');
+
+      // Run until full completion
+      coordinator.runToCompletion(100);
+      frames = coordinator.getAllFrames();
+      expect(coordinator.isComplete()).toBe(true);
+      expect(frames[0].status).toBe('ACKNOWLEDGED');
+      expect(frames[1].status).toBe('ACKNOWLEDGED');
+      expect(frames[2].status).toBe('ACKNOWLEDGED');
+
+      expect(coordinator.deliveredMessages).toEqual(['NETWORKS', ' LAB 202', '6']);
+      expect(coordinator.deliveredMessages.join('')).toBe('NETWORKS LAB 2026');
+      expect(coordinator.getTelemetry().delivered).toBe(3);
+      expect(coordinator.getTelemetry().retransmissions).toBe(0);
+    });
+
+    it('preserves WAITING state of subsequent frames during timeout retransmission of dropped DATA frame', () => {
+      coordinator.reset({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        maxPayloadChunk: 8,
+        propagationDelay: 4,
+        timeoutDuration: 12,
+      });
+
+      // Drop first DATA frame transmission
+      coordinator.setNextDataFault('DROP');
+      coordinator.sendMessage('NETWORKS LAB 2026');
+
+      // Step to t = 13 (timeout fires at t = 12)
+      coordinator.runUntil((c) => c.getTelemetry().currentTick >= 13);
+      const frames = coordinator.getAllFrames();
+
+      // Frame 0 retransmits, later frames MUST remain WAITING
+      expect(frames[0].status).toBe('RETRANSMITTING');
+      expect(frames[0].attempt).toBe(2);
+      expect(frames[1].status).toBe('WAITING');
+      expect(frames[2].status).toBe('WAITING');
+
+      // Run to full completion
+      coordinator.runToCompletion(150);
+      expect(coordinator.isComplete()).toBe(true);
+      expect(coordinator.getTelemetry().timeouts).toBe(1);
+      expect(coordinator.getTelemetry().retransmissions).toBe(1);
+      expect(coordinator.deliveredMessages.join('')).toBe('NETWORKS LAB 2026');
+    });
+
+    it('handles lost ACK and duplicate suppression correctly without corrupting multi-frame sequence', () => {
+      coordinator.reset({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        maxPayloadChunk: 8,
+        propagationDelay: 4,
+        timeoutDuration: 12,
+      });
+
+      // Drop first ACK
+      coordinator.setNextAckFault('DROP');
+      coordinator.sendMessage('NETWORKS LAB 2026');
+
+      // Run to completion
+      coordinator.runToCompletion(150);
+      expect(coordinator.isComplete()).toBe(true);
+      expect(coordinator.getTelemetry().timeouts).toBe(1);
+      expect(coordinator.getTelemetry().duplicates).toBe(1);
+      expect(coordinator.deliveredMessages.join('')).toBe('NETWORKS LAB 2026');
+    });
+  });
 });

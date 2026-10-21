@@ -232,7 +232,7 @@ export class Channel {
         },
         {
           type: 'FRAME_DELIVERY',
-          payload: { transmissionId, outcome },
+          payload: { transmissionId, outcome, channelName: this._name },
         }
       );
       record.eventId = scheduledEventId;

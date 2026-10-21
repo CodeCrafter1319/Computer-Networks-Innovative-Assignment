@@ -40,8 +40,8 @@ export default function FlowControlView() {
   const [transmissionDelay, setTransmissionDelay] = useState(1);
 
   // Message & Payload Segmentation
-  const [messageInput, setMessageInput] = useState('NETWORKS 2026');
-  const [chunkSize, setChunkSize] = useState(4);
+  const [messageInput, setMessageInput] = useState('NETWORKS LAB 2026');
+  const [chunkSize, setChunkSize] = useState(8);
   const [pendingQueue, setPendingQueue] = useState([]);
 
   // Channel Fault State
@@ -148,7 +148,8 @@ export default function FlowControlView() {
           }
 
           // If there are pending queue items and protocol has capacity, send next
-          if (pendingQueue.length > 0) {
+          let currentPending = pendingQueue;
+          if (currentPending.length > 0) {
             const protoInstance = simulatorRef.current.protocolInstance;
             let canSendMore = false;
             if (protocol === FlowControlProtocol.STOP_AND_WAIT) {
@@ -157,13 +158,31 @@ export default function FlowControlView() {
               canSendMore = protoInstance.canSend();
             }
             if (canSendMore) {
-              const [nextChunk, ...rest] = pendingQueue;
+              const [nextChunk, ...rest] = currentPending;
+              currentPending = rest;
               setPendingQueue(rest);
               simulatorRef.current.send(nextChunk);
             }
           }
 
           simulatorRef.current.stepTick();
+
+          // Check if window opened during this tick (e.g. ACK arrived)
+          if (currentPending.length > 0) {
+            const protoInstance = simulatorRef.current.protocolInstance;
+            let canSendMore = false;
+            if (protocol === FlowControlProtocol.STOP_AND_WAIT) {
+              canSendMore = protoInstance.status === 'IDLE';
+            } else if (protoInstance.canSend) {
+              canSendMore = protoInstance.canSend();
+            }
+            if (canSendMore) {
+              const [nextChunk, ...rest] = currentPending;
+              setPendingQueue(rest);
+              simulatorRef.current.send(nextChunk);
+            }
+          }
+
           updateSnapshot();
         }
       }, playSpeedMs);
@@ -177,7 +196,51 @@ export default function FlowControlView() {
   const handleStepTick = () => {
     setIsPlaying(false);
     if (simulatorRef.current) {
-      // Pump pending queue if capacity available
+      let currentPending = pendingQueue;
+      if (currentPending.length > 0) {
+        const protoInstance = simulatorRef.current.protocolInstance;
+        let canSendMore = false;
+        if (protocol === FlowControlProtocol.STOP_AND_WAIT) {
+          canSendMore = protoInstance.status === 'IDLE';
+        } else if (protoInstance.canSend) {
+          canSendMore = protoInstance.canSend();
+        }
+        if (canSendMore) {
+          const [nextChunk, ...rest] = currentPending;
+          currentPending = rest;
+          setPendingQueue(rest);
+          simulatorRef.current.send(nextChunk);
+        }
+      }
+
+      simulatorRef.current.stepTick();
+
+      // Check if window opened during this tick
+      if (currentPending.length > 0) {
+        const protoInstance = simulatorRef.current.protocolInstance;
+        let canSendMore = false;
+        if (protocol === FlowControlProtocol.STOP_AND_WAIT) {
+          canSendMore = protoInstance.status === 'IDLE';
+        } else if (protoInstance.canSend) {
+          canSendMore = protoInstance.canSend();
+        }
+        if (canSendMore) {
+          const [nextChunk, ...rest] = currentPending;
+          setPendingQueue(rest);
+          simulatorRef.current.send(nextChunk);
+        }
+      }
+
+      updateSnapshot();
+    }
+  };
+
+  const handleStepEvent = () => {
+    setIsPlaying(false);
+    if (simulatorRef.current) {
+      simulatorRef.current.stepEvent();
+
+      // Check if window opened after event execution
       if (pendingQueue.length > 0) {
         const protoInstance = simulatorRef.current.protocolInstance;
         let canSendMore = false;
@@ -192,15 +255,7 @@ export default function FlowControlView() {
           simulatorRef.current.send(nextChunk);
         }
       }
-      simulatorRef.current.stepTick();
-      updateSnapshot();
-    }
-  };
 
-  const handleStepEvent = () => {
-    setIsPlaying(false);
-    if (simulatorRef.current) {
-      simulatorRef.current.stepEvent();
       updateSnapshot();
     }
   };
@@ -211,7 +266,7 @@ export default function FlowControlView() {
       // Dispatch all pending queue items as capacity allows
       let currentQueue = [...pendingQueue];
       let guard = 0;
-      while (currentQueue.length > 0 && guard < 100) {
+      while ((currentQueue.length > 0 || !simulatorRef.current.isComplete()) && guard < 300) {
         guard++;
         const protoInstance = simulatorRef.current.protocolInstance;
         let canSendMore = false;
@@ -220,17 +275,13 @@ export default function FlowControlView() {
         } else if (protoInstance.canSend) {
           canSendMore = protoInstance.canSend();
         }
-        if (canSendMore) {
+        if (canSendMore && currentQueue.length > 0) {
           const nextChunk = currentQueue.shift();
           simulatorRef.current.send(nextChunk);
-        } else {
-          simulatorRef.current.stepTick();
         }
+        simulatorRef.current.stepTick();
       }
       setPendingQueue(currentQueue);
-      if (simulatorRef.current.runToCompletion) {
-        simulatorRef.current.runToCompletion(200);
-      }
       updateSnapshot();
     }
   };
@@ -249,8 +300,8 @@ export default function FlowControlView() {
 
   // Concrete Message Segmentation into Chunks
   const messageChunks = useMemo(() => {
-    const text = messageInput.trim();
-    if (!text) return [];
+    const text = messageInput;
+    if (typeof text !== 'string' || text.length === 0) return [];
     const sz = Math.max(1, chunkSize);
     const chunks = [];
     for (let i = 0; i < text.length; i += sz) {
@@ -621,30 +672,112 @@ export default function FlowControlView() {
         {/* Concrete Frame Queue Ribbon */}
         {messageChunks.length > 0 && (
           <div style={{ marginTop: '0.75rem' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
-              🎞️ Concrete Segmented Frame Queue ({messageChunks.length} Frames):
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{`🎞️ Concrete Segmented Frame Queue (${messageChunks.length} Frames):`}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {protocol === FlowControlProtocol.STOP_AND_WAIT
+                  ? 'Stop-and-Wait ARQ: 1 frame at a time; subsequent frames wait for ACK'
+                  : 'Sliding Window ARQ: Pipeline up to Ws unacknowledged frames'}
+              </span>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
-              {messageChunks.map((chunk, idx) => (
-                <div
-                  key={chunk.id}
-                  style={{
-                    background: '#f8fafc',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: '0.4rem 0.65rem',
-                    minWidth: '110px',
-                    fontSize: '0.75rem',
-                    fontFamily: 'var(--font-mono)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                    <strong style={{ color: 'var(--accent-blue)' }}>Frame #{idx}</strong>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>{chunk.text.length}B</span>
+              {messageChunks.map((chunk, idx) => {
+                const deliveredCount = protocolState?.receiver?.deliveredCount ?? 0;
+                const ackInFlight = (inFlightFrames || []).some((p) => p.direction === 'REVERSE');
+                const dataInFlight = (inFlightFrames || []).some(
+                  (p) => p.direction === 'FORWARD' && p.frame?.payloadText === chunk.text
+                );
+
+                let status = 'WAITING';
+                let statusBg = '#f1f5f9';
+                let statusColor = '#64748b';
+                let statusIcon = '⏳';
+
+                if (idx < deliveredCount) {
+                  if (idx === deliveredCount - 1 && ackInFlight) {
+                    status = 'RECEIVED';
+                    statusBg = '#dcfce7';
+                    statusColor = '#15803d';
+                    statusIcon = '📥';
+                  } else {
+                    status = 'ACKNOWLEDGED';
+                    statusBg = '#bbf7d0';
+                    statusColor = '#166534';
+                    statusIcon = '✅';
+                  }
+                } else if (dataInFlight) {
+                  const flightPkt = (inFlightFrames || []).find(
+                    (p) => p.direction === 'FORWARD' && p.frame?.payloadText === chunk.text
+                  );
+                  if (flightPkt?.frame?.attempt > 1 || flightPkt?.corrupted) {
+                    status = flightPkt?.corrupted ? 'CORRUPTED' : 'RETRANSMITTING';
+                    statusBg = flightPkt?.corrupted ? '#ffe4e6' : '#fef3c7';
+                    statusColor = flightPkt?.corrupted ? '#be123c' : '#b45309';
+                    statusIcon = flightPkt?.corrupted ? '⚡' : '🔄';
+                  } else {
+                    status = 'IN TRANSIT';
+                    statusBg = '#dbeafe';
+                    statusColor = '#1d4ed8';
+                    statusIcon = '🚀';
+                  }
+                } else if (
+                  protocolState?.sender?.status === 'WAITING_FOR_ACK' &&
+                  idx === deliveredCount
+                ) {
+                  const currentAttempt = protocolState?.sender?.currentFrame?.attempt || 1;
+                  if (currentAttempt > 1) {
+                    status = 'RETRANSMITTING';
+                    statusBg = '#fef3c7';
+                    statusColor = '#b45309';
+                    statusIcon = '🔄';
+                  } else {
+                    status = 'IN TRANSIT';
+                    statusBg = '#dbeafe';
+                    statusColor = '#1d4ed8';
+                    statusIcon = '🚀';
+                  }
+                }
+
+                return (
+                  <div
+                    key={chunk.id}
+                    style={{
+                      background: '#ffffff',
+                      border: '1.5px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.45rem 0.65rem',
+                      minWidth: '135px',
+                      fontSize: '0.75rem',
+                      fontFamily: 'var(--font-mono)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.3rem',
+                      boxShadow: 'var(--shadow-sm)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ color: 'var(--accent-blue)' }}>Frame #{idx}</strong>
+                      <span
+                        style={{
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          padding: '0.12rem 0.4rem',
+                          borderRadius: '4px',
+                          background: statusBg,
+                          color: statusColor,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {statusIcon} {status}
+                      </span>
+                    </div>
+                    <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>&quot;{chunk.text}&quot;</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      {chunk.text.length} char{chunk.text.length === 1 ? '' : 's'}
+                    </div>
                   </div>
-                  <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>&quot;{chunk.text}&quot;</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

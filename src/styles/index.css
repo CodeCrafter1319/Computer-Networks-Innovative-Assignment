@@ -1194,7 +1194,8 @@ body {
   text-transform: uppercase;
 }
 
-.frame-status-pending {
+.frame-status-pending,
+.frame-status-waiting {
   background: #f1f5f9;
   color: #64748b;
 }
@@ -1213,6 +1214,11 @@ body {
 .frame-status-delivered {
   background: #dcfce7;
   color: #15803d;
+}
+
+.frame-status-acknowledged {
+  background: #bbf7d0;
+  color: #166534;
 }
 
 .frame-status-corrupted {

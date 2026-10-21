@@ -672,22 +672,31 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
               </div>
               <div className="frame-cards-row">
                 {allFrames.map((f, idx) => {
-                  const isSelected = selectedFrameId === f.id;
-                  let statusLabel = 'PENDING';
+                  const isSelected = selectedFrameId === f.id || (f.tempId && selectedFrameId === f.tempId);
+                  let statusLabel = 'WAITING';
                   let statusClass = 'frame-status-pending';
 
-                  if (f.stage8?.delivered) {
-                    statusLabel = 'DELIVERED';
+                  if (f.status === 'ACKNOWLEDGED' || f.stage8?.acknowledged) {
+                    statusLabel = 'ACKNOWLEDGED';
                     statusClass = 'frame-status-delivered';
-                  } else if (f.stage7 && !f.stage7.fcsVerified) {
-                    statusLabel = 'CORRUPTED';
-                    statusClass = 'frame-status-corrupted';
-                  } else if (activeInFlightData && activeInFlightData.transmittedFrame?.id === f.id) {
+                  } else if (f.status === 'RECEIVED' || f.stage8?.delivered) {
+                    statusLabel = 'RECEIVED';
+                    statusClass = 'frame-status-delivered';
+                  } else if (f.status === 'RETRANSMITTING' || f.attempt > 1) {
+                    statusLabel = `RETRANSMITTING (#${f.attempt})`;
+                    statusClass = 'frame-status-transmitting';
+                  } else if (f.status === 'IN_TRANSIT' || (activeInFlightData && activeInFlightData.transmittedFrame?.id === f.id)) {
                     statusLabel = 'IN TRANSIT';
                     statusClass = 'frame-status-in-flight';
-                  } else if (f.attempt > 0) {
-                    statusLabel = `ATTEMPT #${f.attempt}`;
-                    statusClass = 'frame-status-transmitting';
+                  } else if (f.status === 'CORRUPTED' || (f.stage7 && !f.stage7.fcsVerified)) {
+                    statusLabel = 'CORRUPTED';
+                    statusClass = 'frame-status-corrupted';
+                  } else if (f.status === 'DROPPED') {
+                    statusLabel = 'DROPPED';
+                    statusClass = 'frame-status-corrupted';
+                  } else {
+                    statusLabel = 'WAITING';
+                    statusClass = 'frame-status-pending';
                   }
 
                   return (

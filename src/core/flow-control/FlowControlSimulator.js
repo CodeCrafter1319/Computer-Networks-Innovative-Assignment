@@ -287,8 +287,16 @@ export class FlowControlSimulator {
   dropInFlight(eventId) {
     const cancelled = this.engine.getQueue().cancel(eventId);
     if (cancelled) {
+      // Mark outcome in channel history records
+      const fwdRecord = this.forwardChannel.getHistory().find(r => r.eventId === eventId);
+      if (fwdRecord) fwdRecord.outcome = TransmissionOutcome.DROPPED;
+      const revRecord = this.reverseChannel.getHistory().find(r => r.eventId === eventId);
+      if (revRecord) revRecord.outcome = TransmissionOutcome.DROPPED;
+
       this._logEvent('FRAME_DROPPED_INTERACTIVE', { eventId, tick: this.engine.getCurrentTick() });
-      this.protocolInstance.stats.duplicatesDiscarded = this.protocolInstance.stats.duplicatesDiscarded || 0;
+      if (this.protocolInstance?.stats) {
+        this.protocolInstance.stats.duplicatesDiscarded = this.protocolInstance.stats.duplicatesDiscarded || 0;
+      }
     }
     return cancelled;
   }
@@ -303,22 +311,26 @@ export class FlowControlSimulator {
     const queue = this.engine.getQueue();
     // Inspect event queue to locate target event
     const event = queue.toArray().find(e => e.id === eventId);
-    if (event && event.payload) {
-      const transmissionId = event.payload.transmissionId;
-      // Search channel history for this transmission record
-      const fwdRecord = this.forwardChannel.getHistory().find(r => r.transmissionId === transmissionId);
+    if (event) {
+      // Match forward channel by eventId first, fallback to transmissionId if channel matches Forward
+      const fwdRecord = this.forwardChannel.getHistory().find(r => r.eventId === eventId)
+        || (event.payload?.channelName?.includes('Forward') ? this.forwardChannel.getHistory().find(r => r.transmissionId === event.payload?.transmissionId) : null);
       if (fwdRecord && fwdRecord.transmittedFrame) {
         fwdRecord.transmittedFrame.corrupted = true;
         if (typeof fwdRecord.transmittedFrame.payload === 'string') {
           fwdRecord.transmittedFrame.payload += ' [CORRUPTED]';
         }
-        this._logEvent('FRAME_CORRUPTED_INTERACTIVE', { eventId, transmissionId, tick: this.engine.getCurrentTick() });
+        this._logEvent('FRAME_CORRUPTED_INTERACTIVE', { eventId, transmissionId: fwdRecord.transmissionId, tick: this.engine.getCurrentTick() });
         return true;
       }
-      const revRecord = this.reverseChannel.getHistory().find(r => r.transmissionId === transmissionId);
+
+      // Match reverse channel by eventId first, fallback to transmissionId
+      const revRecord = this.reverseChannel.getHistory().find(r => r.eventId === eventId)
+        || (event.payload?.channelName?.includes('Reverse') ? this.reverseChannel.getHistory().find(r => r.transmissionId === event.payload?.transmissionId) : null)
+        || this.reverseChannel.getHistory().find(r => r.transmissionId === event.payload?.transmissionId);
       if (revRecord && revRecord.transmittedFrame) {
         revRecord.transmittedFrame.corrupted = true;
-        this._logEvent('ACK_CORRUPTED_INTERACTIVE', { eventId, transmissionId, tick: this.engine.getCurrentTick() });
+        this._logEvent('ACK_CORRUPTED_INTERACTIVE', { eventId, transmissionId: revRecord.transmissionId, tick: this.engine.getCurrentTick() });
         return true;
       }
     }
@@ -336,16 +348,20 @@ export class FlowControlSimulator {
 
     const inFlight = [];
     for (const evt of queueEvents) {
-      if (evt.type === 'FRAME_DELIVERY' && evt.payload?.transmissionId) {
-        const txId = evt.payload.transmissionId;
-        const fwdRec = this.forwardChannel.getHistory().find(r => r.transmissionId === txId);
+      if (evt.type === 'FRAME_DELIVERY') {
+        const txId = evt.payload?.transmissionId;
+
+        // 1. Try to match forward channel by unique engine eventId first
+        const fwdRec = this.forwardChannel.getHistory().find(r => r.eventId === evt.id)
+          || (evt.payload?.channelName?.includes('Forward') ? this.forwardChannel.getHistory().find(r => r.transmissionId === txId) : null);
+
         if (fwdRec && fwdRec.outcome !== TransmissionOutcome.DROPPED) {
           const totalDelay = fwdRec.totalDelay || this.config.propagationDelay;
           const elapsed = currentTick - fwdRec.startTick;
           const progress = Math.min(1, Math.max(0, elapsed / Math.max(1, totalDelay)));
           inFlight.push({
             eventId: evt.id,
-            transmissionId: txId,
+            transmissionId: fwdRec.transmissionId,
             direction: 'FORWARD',
             channelName: 'Forward',
             frame: fwdRec.transmittedFrame,
@@ -357,14 +373,18 @@ export class FlowControlSimulator {
           continue;
         }
 
-        const revRec = this.reverseChannel.getHistory().find(r => r.transmissionId === txId);
+        // 2. Match reverse channel by unique engine eventId (or reverse channel name)
+        const revRec = this.reverseChannel.getHistory().find(r => r.eventId === evt.id)
+          || (evt.payload?.channelName?.includes('Reverse') ? this.reverseChannel.getHistory().find(r => r.transmissionId === txId) : null)
+          || (!evt.payload?.channelName && this.reverseChannel.getHistory().find(r => r.transmissionId === txId));
+
         if (revRec && revRec.outcome !== TransmissionOutcome.DROPPED) {
           const totalDelay = revRec.totalDelay || this.config.propagationDelay;
           const elapsed = currentTick - revRec.startTick;
           const progress = Math.min(1, Math.max(0, elapsed / Math.max(1, totalDelay)));
           inFlight.push({
             eventId: evt.id,
-            transmissionId: txId,
+            transmissionId: revRec.transmissionId,
             direction: 'REVERSE',
             channelName: 'Reverse',
             frame: revRec.transmittedFrame,

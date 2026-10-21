@@ -139,6 +139,8 @@ export class TransmissionLabCoordinator {
     // Shared state
     this.stageHistory = []; // Sequential timeline of stage events
     this.frameLifecycle = new Map(); // frameId -> 8-stage inspection record
+    this.pendingFrameQueue = []; // Queue of segmented chunks awaiting protocol transmission capacity
+    this.activeDispatchingChunk = null; // Currently dispatching chunk reference
     this._deliveredMessages = []; // Successfully delivered payload strings at receiver
     this.pendingFaultNextData = null; // Fault for next forward transmission
     this.pendingFaultNextAck = null; // Fault for next reverse transmission
@@ -166,6 +168,8 @@ export class TransmissionLabCoordinator {
   _initSimulation() {
     this.stageHistory = [];
     this.frameLifecycle.clear();
+    this.pendingFrameQueue = [];
+    this.activeDispatchingChunk = null;
     this._deliveredMessages = [];
     this.protocolInstance = null;
     this.macSimulator = null;
@@ -338,6 +342,13 @@ export class TransmissionLabCoordinator {
           });
         }
         onDeliver(deliveredAck, record);
+
+        if (!deliveredAck.corrupted) {
+          this._handleAckDelivered(deliveredAck);
+        }
+
+        // Pump any subsequent queued chunks now that sender window capacity may be available
+        this._pumpPendingTransmission();
       };
 
       return originalReverseTransmit(decoratedAck, wrappedAckDeliver, faultToApply);
@@ -448,6 +459,81 @@ export class TransmissionLabCoordinator {
     return chunks;
   }
 
+  /**
+   * Pre-creates a lifecycle record for a queued chunk before physical transmission.
+   * Enables immediate visibility in the concrete frame queue with WAITING status.
+   * @private
+   */
+  _createWaitingLifecycleRecord(chunk, index, tempId) {
+    const m = this.config.m;
+    const fcsType = this.config.fcsType;
+    const framingType = this.config.framingType;
+    const payloadText = chunk.chunkText;
+    const payloadBytes = chunk.chunkBytes;
+
+    // Pre-calculate preview of wire bytes, FCS, and framing for educational inspection
+    const estimatedSeq = index % (1 << m);
+    const simulatedFrame = createFrame({
+      type: FrameType.DATA,
+      seq: estimatedSeq,
+      payload: payloadText,
+    });
+    const headerBytes = serializeFrameHeader(simulatedFrame.type, simulatedFrame.seq, simulatedFrame.ack, m);
+    const wireBytes = serializeFrameToWireBytes(simulatedFrame, m);
+    const headerHex = bytesToHexString(headerBytes);
+    const wireHex = bytesToHexString(wireBytes);
+    const fcsResult = this._computeFcs(wireBytes, fcsType);
+    const framingResult = this._applyFraming(wireBytes, fcsResult, framingType);
+
+    return {
+      id: tempId,
+      tempId,
+      seq: estimatedSeq,
+      type: FrameType.DATA,
+      attempt: 0,
+      status: 'WAITING',
+      payloadText,
+      chunkIndex: index,
+      stage1: {
+        title: 'Stage 1: Upper-Layer Payload & Segmentation',
+        payloadText,
+        byteLength: payloadBytes.length,
+        hexBytes: chunk.hexBytes,
+      },
+      stage2: {
+        title: 'Stage 2: Frame Construction & Header Serialization',
+        type: FrameType.DATA,
+        seq: estimatedSeq,
+        ack: 0,
+        m,
+        headerLength: headerBytes.length,
+        headerHex,
+        wireHex,
+        wireByteCount: wireBytes.length,
+      },
+      stage3: {
+        title: 'Stage 3: Error-Control Generation (FCS)',
+        fcsType,
+        fcsValue: fcsResult.fcsValue,
+        fcsHex: fcsResult.fcsHex,
+        fcsBits: fcsResult.fcsBits,
+        coverage: 'Header Bytes + Payload Bytes',
+        description: fcsResult.description,
+      },
+      stage4: {
+        title: 'Stage 4: Framing & Transparency Encoding',
+        framingType,
+        framedDisplay: framingResult.display,
+        overheadCount: framingResult.overheadCount,
+        details: framingResult.details,
+      },
+      stage5: null,
+      stage6: null,
+      stage7: null,
+      stage8: null,
+    };
+  }
+
   // ==========================================================================
   // STAGES 2, 3, 4: FRAME ENCODING PIPELINE (Sender)
   // ==========================================================================
@@ -490,50 +576,84 @@ export class TransmissionLabCoordinator {
     frame.rawBits = framingResult.rawBits || '';
     frame.stuffedBits = framingResult.stuffedBits || '';
 
-    // Initialize lifecycle record for this frame
-    const lifecycle = {
-      id: frame.id,
-      seq: frame.seq,
-      type: frame.type,
-      attempt: frame.attempt || 1,
-      payloadText,
-      stage1: {
-        title: 'Stage 1: Upper-Layer Payload & Segmentation',
-        payloadText,
-        byteLength: payloadBytes.length,
-        hexBytes: bytesToHexString(payloadBytes),
-      },
-      stage2: {
-        title: 'Stage 2: Frame Construction & Header Serialization',
-        type: frame.type,
+    // Check if there is an existing lifecycle (e.g. retransmission) or an active dispatching chunk
+    let lifecycle = this.frameLifecycle.get(frame.id);
+
+    if (!lifecycle && this.activeDispatchingChunk) {
+      const chunk = this.activeDispatchingChunk;
+      lifecycle = chunk.lifecycleRef;
+      if (lifecycle && chunk.tempId) {
+        this.frameLifecycle.delete(chunk.tempId);
+      }
+      chunk.frameId = frame.id;
+    }
+
+    if (!lifecycle) {
+      lifecycle = {
+        id: frame.id,
         seq: frame.seq,
-        ack: frame.ack,
-        m,
-        headerLength: headerBytes.length,
-        headerHex,
-        wireHex,
-        wireByteCount: wireBytes.length,
-      },
-      stage3: {
-        title: 'Stage 3: Error-Control Generation (FCS)',
-        fcsType,
-        fcsValue: fcsResult.fcsValue,
-        fcsHex: fcsResult.fcsHex,
-        fcsBits: fcsResult.fcsBits,
-        coverage: 'Header Bytes + Payload Bytes',
-        description: fcsResult.description,
-      },
-      stage4: {
-        title: 'Stage 4: Framing & Transparency Encoding',
-        framingType,
-        framedDisplay: framingResult.display,
-        overheadCount: framingResult.overheadCount,
-        details: framingResult.details,
-      },
-      stage5: null,
-      stage6: null,
-      stage7: null,
-      stage8: null,
+        type: frame.type,
+        attempt: frame.attempt || 1,
+        status: frame.attempt > 1 ? 'RETRANSMITTING' : 'IN_TRANSIT',
+        payloadText,
+        stage1: {
+          title: 'Stage 1: Upper-Layer Payload & Segmentation',
+          payloadText,
+          byteLength: payloadBytes.length,
+          hexBytes: bytesToHexString(payloadBytes),
+        },
+        stage2: null,
+        stage3: null,
+        stage4: null,
+        stage5: null,
+        stage6: null,
+        stage7: null,
+        stage8: null,
+      };
+    }
+
+    lifecycle.id = frame.id;
+    lifecycle.seq = frame.seq;
+    lifecycle.type = frame.type;
+    lifecycle.attempt = frame.attempt || (lifecycle.attempt ? lifecycle.attempt + 1 : 1);
+    lifecycle.status = lifecycle.attempt > 1 ? 'RETRANSMITTING' : 'IN_TRANSIT';
+    lifecycle.payloadText = payloadText;
+
+    lifecycle.stage1 = {
+      title: 'Stage 1: Upper-Layer Payload & Segmentation',
+      payloadText,
+      byteLength: payloadBytes.length,
+      hexBytes: bytesToHexString(payloadBytes),
+    };
+
+    lifecycle.stage2 = {
+      title: 'Stage 2: Frame Construction & Header Serialization',
+      type: frame.type,
+      seq: frame.seq,
+      ack: frame.ack,
+      m,
+      headerLength: headerBytes.length,
+      headerHex,
+      wireHex,
+      wireByteCount: wireBytes.length,
+    };
+
+    lifecycle.stage3 = {
+      title: 'Stage 3: Error-Control Generation (FCS)',
+      fcsType,
+      fcsValue: fcsResult.fcsValue,
+      fcsHex: fcsResult.fcsHex,
+      fcsBits: fcsResult.fcsBits,
+      coverage: 'Header Bytes + Payload Bytes',
+      description: fcsResult.description,
+    };
+
+    lifecycle.stage4 = {
+      title: 'Stage 4: Framing & Transparency Encoding',
+      framingType,
+      framedDisplay: framingResult.display,
+      overheadCount: framingResult.overheadCount,
+      details: framingResult.details,
     };
 
     this.frameLifecycle.set(frame.id, lifecycle);
@@ -971,6 +1091,9 @@ export class TransmissionLabCoordinator {
 
     if (delivered) {
       this._deliveredMessages.push(lifecycle.payloadText);
+      lifecycle.status = 'RECEIVED';
+    } else if (frame.corrupted || !stage7Result.isValid) {
+      lifecycle.status = 'CORRUPTED';
     }
 
     lifecycle.stage8 = {
@@ -986,6 +1109,75 @@ export class TransmissionLabCoordinator {
         ? `Frame #${frame.seq} validated, but discarded by receiver as a duplicate frame. Re-ACK sent.`
         : `Frame #${frame.seq} rejected (${stage7Result.fcsError || stage7Result.framingError}). Awaiting timeout retransmission.`,
     };
+  }
+
+  /**
+   * Updates lifecycle records when an ACK successfully reaches the sender.
+   * @private
+   */
+  _handleAckDelivered(deliveredAck) {
+    if (deliveredAck.corrupted) return;
+    const currentTick = this.engine.getCurrentTick();
+    const ackNum = deliveredAck.ack;
+
+    if (this.config.protocol === FlowProtocol.STOP_AND_WAIT) {
+      // In Stop-and-Wait, ACK(A) acknowledges frame with seq = (A - 1 + 2) % 2
+      const ackedSeq = (ackNum - 1 + 2) % 2;
+      for (const lf of this.frameLifecycle.values()) {
+        if (lf.seq === ackedSeq && (lf.status === 'RECEIVED' || lf.status === 'IN_TRANSIT')) {
+          lf.status = 'ACKNOWLEDGED';
+          if (!lf.stage8) lf.stage8 = {};
+          lf.stage8.acknowledged = true;
+          lf.stage8.acknowledgedTick = currentTick;
+          break;
+        }
+      }
+    } else if (this.config.protocol === FlowProtocol.GO_BACK_N) {
+      // Cumulative ACK up to ackNum
+      for (const lf of this.frameLifecycle.values()) {
+        if (lf.status === 'RECEIVED' || lf.status === 'IN_TRANSIT') {
+          lf.status = 'ACKNOWLEDGED';
+          if (!lf.stage8) lf.stage8 = {};
+          lf.stage8.acknowledged = true;
+          lf.stage8.acknowledgedTick = currentTick;
+        }
+      }
+    } else if (this.config.protocol === FlowProtocol.SELECTIVE_REPEAT) {
+      // Selective ACK for ackNum
+      for (const lf of this.frameLifecycle.values()) {
+        if (lf.seq === ackNum && (lf.status === 'RECEIVED' || lf.status === 'IN_TRANSIT')) {
+          lf.status = 'ACKNOWLEDGED';
+          if (!lf.stage8) lf.stage8 = {};
+          lf.stage8.acknowledged = true;
+          lf.stage8.acknowledgedTick = currentTick;
+        }
+      }
+    }
+  }
+
+  /**
+   * Dispatches pending segmented chunks as long as protocol instance has capacity.
+   * @private
+   * @returns {Array<Object>} Transmitted frames
+   */
+  _pumpPendingTransmission() {
+    if (this.config.profile !== ProfileType.PROFILE_A) return [];
+    if (!this.protocolInstance || !this.pendingFrameQueue || this.pendingFrameQueue.length === 0) return [];
+
+    const sent = [];
+    while (this.pendingFrameQueue.length > 0 && this.protocolInstance.canSend()) {
+      const nextChunk = this.pendingFrameQueue[0];
+      this.activeDispatchingChunk = nextChunk;
+      const res = this.protocolInstance.send(nextChunk.chunkText);
+      if (res && res.success) {
+        this.pendingFrameQueue.shift();
+        sent.push(res.frame);
+      } else {
+        break;
+      }
+    }
+    this.activeDispatchingChunk = null;
+    return sent;
   }
 
   // ==========================================================================
@@ -1012,24 +1204,30 @@ export class TransmissionLabCoordinator {
 
   /**
    * Profile A: Send message over Point-to-Point ARQ link.
+   * Pre-segments all chunks so they appear in Concrete Frame Queue immediately with WAITING status,
+   * then dispatches chunks sequentially according to flow-control window rules.
    * @private
    */
   _sendMessageProfileA(messageText) {
     const chunks = this.segmentPayload(messageText);
-    const sentFrames = [];
+    this.pendingFrameQueue = [];
 
-    for (const chunk of chunks) {
-      if (!this.protocolInstance.canSend()) {
-        break;
-      }
-      const res = this.protocolInstance.send(chunk.chunkText);
-      if (res.success) {
-        sentFrames.push(res.frame);
-      }
+    // Pre-register each chunk with WAITING status in frameLifecycle
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const tempId = `chunk_${i}`;
+      const lifecycle = this._createWaitingLifecycleRecord(chunk, i, tempId);
+      this.frameLifecycle.set(tempId, lifecycle);
+      chunk.lifecycleRef = lifecycle;
+      chunk.tempId = tempId;
+      this.pendingFrameQueue.push(chunk);
     }
 
+    // Pump as many initial frames as the protocol window permits
+    const sentFrames = this._pumpPendingTransmission();
+
     return {
-      success: sentFrames.length > 0,
+      success: sentFrames.length > 0 || chunks.length === 0,
       framesSent: sentFrames.length,
       chunks,
     };
@@ -1077,6 +1275,7 @@ export class TransmissionLabCoordinator {
     if (this.config.profile === ProfileType.PROFILE_A) {
       const nextTick = this.engine.getCurrentTick() + 1;
       this.engine.runUntil(nextTick);
+      this._pumpPendingTransmission();
       return this.engine.getCurrentTick();
     } else {
       return this.macSimulator.stepTick();
@@ -1100,7 +1299,13 @@ export class TransmissionLabCoordinator {
    * @returns {Object|null}
    */
   stepEvent() {
-    return this.engine.step();
+    if (this.config.profile === ProfileType.PROFILE_A) {
+      const evt = this.engine.step();
+      this._pumpPendingTransmission();
+      return evt;
+    } else {
+      return this.engine.step();
+    }
   }
 
   /**
@@ -1136,6 +1341,7 @@ export class TransmissionLabCoordinator {
       const fInFlight = this.forwardChannel ? this.forwardChannel.getInFlightFrames().length : 0;
       const rInFlight = this.reverseChannel ? this.reverseChannel.getInFlightFrames().length : 0;
       const queueEmpty = this.engine ? this.engine.getQueue().isEmpty() : true;
+      const pendingEmpty = !this.pendingFrameQueue || this.pendingFrameQueue.length === 0;
 
       let protocolIdle = false;
       if (this.config.protocol === FlowProtocol.STOP_AND_WAIT) {
@@ -1146,7 +1352,7 @@ export class TransmissionLabCoordinator {
         protocolIdle = this.protocolInstance.buffer.size === 0;
       }
 
-      return queueEmpty && fInFlight === 0 && rInFlight === 0 && protocolIdle;
+      return pendingEmpty && queueEmpty && fInFlight === 0 && rInFlight === 0 && protocolIdle;
     } else {
       if (!this.macSimulator) return true;
       const queueEmpty = this.engine ? this.engine.getQueue().isEmpty() : true;
@@ -1462,7 +1668,16 @@ export class TransmissionLabCoordinator {
    * @returns {Object|null}
    */
   getFrameInspection(frameId) {
-    return this.frameLifecycle.get(frameId) || null;
+    if (this.frameLifecycle.has(frameId)) {
+      return this.frameLifecycle.get(frameId);
+    }
+    // Search by tempId, chunkIndex, or id if frame was re-keyed upon dispatch
+    for (const lf of this.frameLifecycle.values()) {
+      if (lf.tempId === frameId || lf.chunkIndex === frameId || lf.id === frameId) {
+        return lf;
+      }
+    }
+    return null;
   }
 
   /**
@@ -1471,7 +1686,11 @@ export class TransmissionLabCoordinator {
    * @returns {Array<Object>}
    */
   getAllFrames() {
-    return Array.from(this.frameLifecycle.values());
+    return Array.from(this.frameLifecycle.values()).sort((a, b) => {
+      const aIdx = typeof a.chunkIndex === 'number' ? a.chunkIndex : (typeof a.id === 'number' ? a.id : 0);
+      const bIdx = typeof b.chunkIndex === 'number' ? b.chunkIndex : (typeof b.id === 'number' ? b.id : 0);
+      return aIdx - bIdx;
+    });
   }
 
   /**

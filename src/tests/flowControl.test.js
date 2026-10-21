@@ -816,4 +816,49 @@ describe('FlowControlView Component Rendering Smoke Test', () => {
     expect(sim.isComplete()).toBe(true);
     expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
   });
+
+  it('identifies ACK frames traveling along reverse path as direction REVERSE in getInFlightFrames', () => {
+    const sim = new FlowControlSimulator({
+      protocol: FlowControlProtocol.STOP_AND_WAIT,
+      propagationDelay: 4,
+      transmissionDelay: 1,
+    });
+
+    sim.send('Hello SW');
+
+    // At t=1, DATA frame is traveling forward
+    sim.stepTicks(1);
+    const forwardInFlight = sim.getInFlightFrames();
+    expect(forwardInFlight.length).toBe(1);
+    expect(forwardInFlight[0].direction).toBe('FORWARD');
+    expect(forwardInFlight[0].channelName).toBe('Forward');
+    expect(forwardInFlight[0].frame.payload).toBe('Hello SW');
+
+    // At t=5, DATA frame arrives at receiver; receiver emits ACK scheduled for arrival at t=9
+    sim.stepTicks(4); // now t=5
+    sim.stepTicks(1); // now t=6: ACK is in-flight on reverse channel
+    const reverseInFlight = sim.getInFlightFrames();
+    expect(reverseInFlight.length).toBe(1);
+    expect(reverseInFlight[0].direction).toBe('REVERSE');
+    expect(reverseInFlight[0].channelName).toBe('Reverse');
+    expect(reverseInFlight[0].frame.type).toBe(FrameType.ACK);
+    expect(reverseInFlight[0].progress).toBeGreaterThan(0);
+    expect(reverseInFlight[0].progress).toBeLessThan(1);
+
+    // Step to completion: ACK arrives at sender, sender window clears
+    sim.runToCompletion(50);
+    expect(sim.isComplete()).toBe(true);
+    expect(sim.getInFlightFrames().length).toBe(0);
+    expect(sim.protocolInstance.status).toBe('IDLE');
+    expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
+  });
+
+  it('renders segmented concrete queue with status badges and exact 3 frames for NETWORKS LAB 2026 in FlowControlView', () => {
+    const html = renderToString(React.createElement(FlowControlView));
+    expect(html).toContain('Concrete Segmented Frame Queue (3 Frames)');
+    expect(html).toContain('NETWORKS');
+    expect(html).toContain(' LAB 202');
+    expect(html).toContain('6');
+    expect(html).toContain('WAITING');
+  });
 });
