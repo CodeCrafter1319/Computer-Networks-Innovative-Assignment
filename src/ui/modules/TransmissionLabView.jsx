@@ -140,7 +140,21 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
   // Transmit Message handler
   const handleSendMessage = () => {
     if (!messageInput.trim()) return;
+    setIsPlaying(false);
+    coordinatorRef.current.reset({
+      profile,
+      protocol,
+      fcsType,
+      framingType,
+      maxPayloadChunk,
+      windowSize,
+      propagationDelay,
+      timeoutDuration,
+      sourceStation,
+      destStation,
+    });
     coordinatorRef.current.sendMessage(messageInput.trim());
+    setSelectedFrameId(null);
     syncState();
   };
 
@@ -148,6 +162,18 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
   const handleTogglePlay = () => {
     if (!isPlaying) {
       if (coordinatorRef.current && coordinatorRef.current.getAllFrames().length === 0 && messageInput.trim()) {
+        coordinatorRef.current.reset({
+          profile,
+          protocol,
+          fcsType,
+          framingType,
+          maxPayloadChunk,
+          windowSize,
+          propagationDelay,
+          timeoutDuration,
+          sourceStation,
+          destStation,
+        });
         coordinatorRef.current.sendMessage(messageInput.trim());
         syncState();
       }
@@ -160,6 +186,18 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
     setIsPlaying(false);
     if (coordinatorRef.current) {
       if (coordinatorRef.current.getAllFrames().length === 0 && messageInput.trim()) {
+        coordinatorRef.current.reset({
+          profile,
+          protocol,
+          fcsType,
+          framingType,
+          maxPayloadChunk,
+          windowSize,
+          propagationDelay,
+          timeoutDuration,
+          sourceStation,
+          destStation,
+        });
         coordinatorRef.current.sendMessage(messageInput.trim());
       }
       coordinatorRef.current.runToCompletion(500);
@@ -258,13 +296,27 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
     return { ...current, badgeClass };
   }, [isPlaying, telemetry.status, playSpeedMs]);
 
+  // Derived or preview frame list for the concrete queue ribbon
+  const displayFrames = useMemo(() => {
+    if (allFrames.length > 0) {
+      return allFrames;
+    }
+    if (!messageInput.trim() || !coordinatorRef.current) {
+      return [];
+    }
+    return coordinatorRef.current.createPreviewFrames(messageInput.trim());
+  }, [allFrames, messageInput, maxPayloadChunk, profile, protocol, fcsType, framingType]);
+
   // Currently selected frame inspection record
   const selectedInspection = useMemo(() => {
     if (selectedFrameId !== null) {
-      return coordinatorRef.current.getFrameInspection(selectedFrameId);
+      const inspected = coordinatorRef.current ? coordinatorRef.current.getFrameInspection(selectedFrameId) : null;
+      if (inspected) return inspected;
+      const foundPreview = displayFrames.find(df => df.id === selectedFrameId || df.tempId === selectedFrameId);
+      if (foundPreview) return foundPreview;
     }
-    return allFrames.length > 0 ? allFrames[0] : null;
-  }, [selectedFrameId, allFrames]);
+    return displayFrames.length > 0 ? displayFrames[0] : null;
+  }, [selectedFrameId, allFrames, displayFrames]);
 
   // Reconstructed delivered text at receiver
   const reconstructedMessage = useMemo(() => {
@@ -660,18 +712,18 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
           </div>
 
           {/* Concrete Frame Queue & Segmentation Ribbon */}
-          {allFrames.length > 0 && (
+          {displayFrames.length > 0 && (
             <div className="segmentation-queue-container">
               <div className="segmentation-queue-header">
                 <span className="segmentation-queue-title">
-                  <span>🎞️ Concrete Frame Queue ({allFrames.length} Frames):</span>
+                  <span>🎞️ Concrete Frame Queue ({displayFrames.length} Frames):</span>
                 </span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   Click any frame card to inspect wire fields
                 </span>
               </div>
               <div className="frame-cards-row">
-                {allFrames.map((f, idx) => {
+                {displayFrames.map((f, idx) => {
                   const isSelected = selectedFrameId === f.id || (f.tempId && selectedFrameId === f.tempId);
                   let statusLabel = 'WAITING';
                   let statusClass = 'frame-status-pending';
@@ -701,9 +753,9 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
 
                   return (
                     <div
-                      key={f.id}
+                      key={f.tempId || f.id || `frame_${idx}`}
                       className={`frame-queue-card ${isSelected ? 'selected' : ''}`}
-                      onClick={() => setSelectedFrameId(f.id)}
+                      onClick={() => setSelectedFrameId(f.tempId || f.id)}
                     >
                       <div className="frame-card-top">
                         <span className="frame-seq-badge">Frame #{f.seq ?? idx}</span>
@@ -976,7 +1028,7 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-muted)' }}>Frames Queued: </span>
-                    <strong>{allFrames.length}</strong>
+                    <strong>{displayFrames.length}</strong>
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-muted)' }}>Timeout Timer: </span>
@@ -1176,7 +1228,7 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
       </div>
 
       {/* 7. Collapsible Technical Inspector: Detailed 8-Stage Wire Lifecycle */}
-      <details className="technical-inspector-card" open={allFrames.length > 0}>
+      <details className="technical-inspector-card" open={displayFrames.length > 0}>
         <summary className="technical-inspector-summary">
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span>🔍</span>

@@ -619,5 +619,95 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
       expect(coordinator.getTelemetry().duplicates).toBe(1);
       expect(coordinator.deliveredMessages.join('')).toBe('NETWORKS LAB 2026');
     });
+
+    it('generates pre-transmission educational preview frames with full Stage 1-4 wire data', () => {
+      coordinator.reset({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        maxPayloadChunk: 8,
+      });
+
+      const previews = coordinator.createPreviewFrames('NETWORKS LAB 2026');
+      expect(previews.length).toBe(3);
+
+      expect(previews[0].status).toBe('WAITING');
+      expect(previews[0].payloadText).toBe('NETWORKS');
+      expect(previews[0].stage1.byteLength).toBe(8);
+      expect(previews[0].stage2.wireByteCount).toBeGreaterThan(8);
+      expect(previews[0].stage3.fcsHex).toBeDefined();
+      expect(previews[0].stage4.framedDisplay).toBeDefined();
+
+      expect(previews[1].status).toBe('WAITING');
+      expect(previews[1].payloadText).toBe(' LAB 202');
+      expect(previews[1].payloadText.startsWith(' ')).toBe(true);
+
+      expect(previews[2].status).toBe('WAITING');
+      expect(previews[2].payloadText).toBe('6');
+      expect(previews[2].stage1.byteLength).toBe(1);
+    });
+
+    it('recovers cleanly from forward DATA corruption on multi-frame sequence while preserving WAITING frames', () => {
+      coordinator.reset({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        maxPayloadChunk: 8,
+        propagationDelay: 4,
+        timeoutDuration: 12,
+      });
+
+      coordinator.setNextDataFault('CORRUPT');
+      coordinator.sendMessage('NETWORKS LAB 2026');
+
+      // Step until receiver detects corruption (t = 1 + 4 = 5)
+      coordinator.runUntil((c) => c.getTelemetry().currentTick >= 6);
+      let frames = coordinator.getAllFrames();
+      expect(frames[0].status).toBe('CORRUPTED');
+      expect(frames[1].status).toBe('WAITING');
+      expect(frames[2].status).toBe('WAITING');
+
+      // Step to timeout retransmission (t >= 13)
+      coordinator.runUntil((c) => c.getTelemetry().currentTick >= 14);
+      frames = coordinator.getAllFrames();
+      expect(frames[0].status).toBe('RETRANSMITTING');
+      expect(frames[0].attempt).toBe(2);
+      expect(frames[1].status).toBe('WAITING');
+      expect(frames[2].status).toBe('WAITING');
+
+      // Run to full completion
+      coordinator.runToCompletion(150);
+      expect(coordinator.isComplete()).toBe(true);
+      expect(coordinator.getTelemetry().corruptions).toBeGreaterThanOrEqual(1);
+      expect(coordinator.getTelemetry().retransmissions).toBeGreaterThanOrEqual(1);
+      expect(coordinator.deliveredMessages).toEqual(['NETWORKS', ' LAB 202', '6']);
+      expect(coordinator.deliveredMessages.join('')).toBe('NETWORKS LAB 2026');
+    });
+
+    it('renders all 3 frame cards in TransmissionLabView concrete queue both before and during transmission', () => {
+      const coord = new TransmissionLabCoordinator({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        maxPayloadChunk: 8,
+      });
+
+      // 1. Before send - renders 3 preview cards in Concrete Frame Queue
+      const preHtml = renderToString(React.createElement(TransmissionLabView, { coordinator: coord }));
+      expect(preHtml).toContain('Concrete Frame Queue');
+      expect(preHtml).toContain('NETWORKS');
+      expect(preHtml).toContain(' LAB 202');
+      expect(preHtml).toContain('wire-payload');
+
+      // 2. Transmit message
+      coord.sendMessage('NETWORKS LAB 2026');
+      const inTransitHtml = renderToString(React.createElement(TransmissionLabView, { coordinator: coord }));
+      expect(inTransitHtml).toContain('Concrete Frame Queue');
+      expect(inTransitHtml).toContain('IN TRANSIT');
+      expect(inTransitHtml).toContain('WAITING');
+
+      // 3. Complete transmission
+      coord.runToCompletion(150);
+      const postHtml = renderToString(React.createElement(TransmissionLabView, { coordinator: coord }));
+      expect(postHtml).toContain('ACKNOWLEDGED');
+      expect(postHtml).toContain('NETWORKS LAB 2026');
+    });
   });
 });

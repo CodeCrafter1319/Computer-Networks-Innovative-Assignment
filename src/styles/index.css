@@ -1258,6 +1258,8 @@ body {
   color: #0f172a;
   font-weight: 700;
   border: 1px solid #cbd5e1;
+  white-space: pre;
+  font-family: var(--font-mono);
 }
 
 .wire-fcs {

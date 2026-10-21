@@ -460,6 +460,26 @@ export class TransmissionLabCoordinator {
   }
 
   /**
+   * Pre-calculates educational preview lifecycle records for the given message text
+   * using current framing, FCS, and maxPayloadChunk settings, without running simulation.
+   * 
+   * @param {string} messageText 
+   * @returns {Array<Object>} List of preview frame lifecycle records with WAITING status
+   */
+  createPreviewFrames(messageText) {
+    if (typeof messageText !== 'string' || messageText.length === 0) {
+      return [];
+    }
+    const chunks = this.segmentPayload(messageText);
+    return chunks.map((chunk, idx) => {
+      const tempId = `preview_${idx}`;
+      const record = this._createWaitingLifecycleRecord(chunk, idx, tempId);
+      record.isPreview = true;
+      return record;
+    });
+  }
+
+  /**
    * Pre-creates a lifecycle record for a queued chunk before physical transmission.
    * Enables immediate visibility in the concrete frame queue with WAITING status.
    * @private
@@ -1211,6 +1231,7 @@ export class TransmissionLabCoordinator {
   _sendMessageProfileA(messageText) {
     const chunks = this.segmentPayload(messageText);
     this.pendingFrameQueue = [];
+    this.frameLifecycle.clear();
 
     // Pre-register each chunk with WAITING status in frameLifecycle
     for (let i = 0; i < chunks.length; i++) {
@@ -1568,6 +1589,7 @@ export class TransmissionLabCoordinator {
         this.config.protocol = FlowProtocol.STOP_AND_WAIT;
         this.config.fcsType = FcsAlgorithm.CRC_16;
         this.config.framingType = FramingAlgorithm.BYTE_STUFFING;
+        this.config.maxPayloadChunk = 16;
         this._initSimulation();
         this.sendMessage('HELLO NETWORKS');
         break;
