@@ -252,6 +252,18 @@ export class Channel {
   }
 
   /**
+   * Get all frames currently traversing the channel (in flight).
+   * 
+   * @returns {Array<Object>}
+   */
+  getInFlightFrames() {
+    const curTick = this._engine ? this._engine.getCurrentTick() : 0;
+    return this._history
+      .filter(h => h.deliveryTick !== null && h.deliveryTick > curTick)
+      .map(h => h.transmittedFrame);
+  }
+
+  /**
    * Clear transmission history.
    */
   clearHistory() {

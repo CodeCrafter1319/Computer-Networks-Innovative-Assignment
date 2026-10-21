@@ -1123,6 +1123,189 @@ export class TransmissionLabCoordinator {
     return predicate(this);
   }
 
+  /**
+   * Evaluates whether the current transmission cycle has fully settled.
+   * 
+   * @returns {boolean}
+   */
+  isComplete() {
+    if (this.getAllFrames().length === 0 && this.stageHistory.length === 0) {
+      return false; // Nothing transmitted yet
+    }
+
+    if (this.config.profile === ProfileType.PROFILE_A) {
+      if (!this.protocolInstance) return true;
+      const fInFlight = this.forwardChannel ? this.forwardChannel.getInFlightFrames().length : 0;
+      const rInFlight = this.reverseChannel ? this.reverseChannel.getInFlightFrames().length : 0;
+      const queueEmpty = this.engine ? this.engine.getQueue().isEmpty() : true;
+
+      let protocolIdle = false;
+      if (this.config.protocol === FlowProtocol.STOP_AND_WAIT) {
+        protocolIdle = this.protocolInstance.status === 'IDLE';
+      } else if (this.config.protocol === FlowProtocol.GO_BACK_N) {
+        protocolIdle = this.protocolInstance.base === this.protocolInstance.nextSeq;
+      } else if (this.config.protocol === FlowProtocol.SELECTIVE_REPEAT) {
+        protocolIdle = this.protocolInstance.buffer.size === 0;
+      }
+
+      return queueEmpty && fInFlight === 0 && rInFlight === 0 && protocolIdle;
+    } else {
+      if (!this.macSimulator) return true;
+      const queueEmpty = this.engine ? this.engine.getQueue().isEmpty() : true;
+      const busIdle = !this.macSimulator.bus.isBusGloballyBusy();
+      let stationsIdle = true;
+      for (const st of this.macSimulator.stations.values()) {
+        if (
+          st.state === 'TRANSMITTING' ||
+          st.state === 'TRANSMITTING_JAM' ||
+          st.state === 'BACKING_OFF' ||
+          st.state === 'SENSING'
+        ) {
+          stationsIdle = false;
+          break;
+        }
+      }
+      return queueEmpty && busIdle && stationsIdle;
+    }
+  }
+
+  /**
+   * Determine the current semantic status of the transmission engine.
+   * 
+   * @returns {{ state: string, label: string, description: string }}
+   */
+  getStatus() {
+    if (this.getAllFrames().length === 0 && this.stageHistory.length === 0) {
+      return {
+        state: 'READY',
+        label: 'Ready to Transmit',
+        description: 'Enter a message payload and click Transmit to begin.',
+      };
+    }
+
+    if (this.isComplete()) {
+      return {
+        state: 'COMPLETED',
+        label: 'Transmission Completed',
+        description: 'Transmission cycle completed. All frames delivered.',
+      };
+    }
+
+    if (this.config.profile === ProfileType.PROFILE_A) {
+      const fInFlight = this.forwardChannel ? this.forwardChannel.getInFlightFrames().length : 0;
+      const rInFlight = this.reverseChannel ? this.reverseChannel.getInFlightFrames().length : 0;
+
+      if (fInFlight > 0) {
+        return {
+          state: 'TRANSMITTING',
+          label: 'Frame in Transit',
+          description: 'Forward DATA frame traversing transmission channel.',
+        };
+      }
+      if (rInFlight > 0) {
+        return {
+          state: 'WAITING_FOR_ACK',
+          label: 'ACK in Transit',
+          description: 'Reverse ACK frame traversing channel to sender.',
+        };
+      }
+
+      if (this.config.protocol === FlowProtocol.STOP_AND_WAIT) {
+        if (this.protocolInstance.status === 'WAITING_FOR_ACK') {
+          return {
+            state: 'WAITING_FOR_ACK',
+            label: 'Waiting for ACK',
+            description: 'Sender waiting for receiver acknowledgement or timeout.',
+          };
+        }
+      } else if (this.config.protocol === FlowProtocol.GO_BACK_N) {
+        if (this.protocolInstance.base !== this.protocolInstance.nextSeq) {
+          return {
+            state: 'WAITING_FOR_ACK',
+            label: 'Window Outstanding',
+            description: 'Sender sliding window has unacknowledged frames.',
+          };
+        }
+      } else if (this.config.protocol === FlowProtocol.SELECTIVE_REPEAT) {
+        if (this.protocolInstance.buffer.size > 0) {
+          return {
+            state: 'WAITING_FOR_ACK',
+            label: 'Selective Window Active',
+            description: 'Selective Repeat tracking outstanding frames.',
+          };
+        }
+      }
+
+      return {
+        state: 'RUNNING',
+        label: 'Simulating',
+        description: 'Discrete-event pipeline advancing.',
+      };
+    } else {
+      // Profile B: CSMA/CD Status
+      let isColliding = false;
+      let isBackingOff = false;
+      let isTransmitting = false;
+
+      if (this.macSimulator) {
+        for (const st of this.macSimulator.stations.values()) {
+          if (st.state === 'TRANSMITTING_JAM') isColliding = true;
+          if (st.state === 'BACKING_OFF') isBackingOff = true;
+          if (st.state === 'TRANSMITTING') isTransmitting = true;
+        }
+      }
+
+      if (isColliding) {
+        return {
+          state: 'COLLISION',
+          label: 'Collision & Jamming',
+          description: 'Stations detected collision; broadcasting 32-bit jam signal.',
+        };
+      }
+      if (isBackingOff) {
+        return {
+          state: 'BACKING_OFF',
+          label: 'Backing Off (BEB)',
+          description: 'Stations waiting for Binary Exponential Backoff delay.',
+        };
+      }
+      if (isTransmitting) {
+        return {
+          state: 'TRANSMITTING',
+          label: 'Wavefront Propagating',
+          description: 'Signals actively propagating across shared bus.',
+        };
+      }
+
+      return {
+        state: 'RUNNING',
+        label: 'Bus Contention Active',
+        description: 'CSMA/CD simulation advancing.',
+      };
+    }
+  }
+
+  /**
+   * Run simulation to completion by safely draining all scheduled events.
+   * Processes genuine tick steps without skipping FCS checks, timer timeouts, or receiver processing.
+   * 
+   * @param {number} [maxTicks=500] - Safety guard against infinite loops
+   * @returns {{ completed: boolean, ticksRun: number, finalTick: number }}
+   */
+  runToCompletion(maxTicks = 500) {
+    const startTick = this.engine.getCurrentTick();
+    let ticksRun = 0;
+    while (!this.isComplete() && ticksRun < maxTicks) {
+      this.stepTick();
+      ticksRun++;
+    }
+    return {
+      completed: this.isComplete(),
+      ticksRun,
+      finalTick: this.engine.getCurrentTick(),
+    };
+  }
+
   // ==========================================================================
   // FAULT INJECTION CONTROLS
   // ==========================================================================
@@ -1334,6 +1517,8 @@ export class TransmissionLabCoordinator {
         goodput,
         deliveredMessages: [...this.deliveredMessages],
         inFlight: this.forwardChannel ? this.forwardChannel.getHistory().filter(h => h.outcome === TransmissionOutcome.DELIVERED) : [],
+        status: this.getStatus(),
+        isComplete: this.isComplete(),
       };
     } else {
       const macTelemetry = this.macSimulator ? this.macSimulator.getTelemetry() : {};
@@ -1342,6 +1527,8 @@ export class TransmissionLabCoordinator {
         currentTick,
         ...macTelemetry,
         deliveredMessages: [...this.deliveredMessages],
+        status: this.getStatus(),
+        isComplete: this.isComplete(),
       };
     }
   }

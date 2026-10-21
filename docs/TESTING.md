@@ -313,8 +313,13 @@ All networking logic in this project is developed under strict test-driven valid
 - **Test Runner:** Vitest v3.2.7 (Node environment)
 - **Command:** `pnpm test -- --run`
 - **Audit Scope:** System-wide regression across all modules (Framing, Error Control, Flow Control, CSMA/CD, End-to-End Transmission Lab, React presentation layer, SSR component renders).
-- **Execution Results:** **171 tests passed across 7 test suites (0 failed, 0 skipped)** in 2.44s.
-- **Production Build Results:** Vite v6.4.4 compiled cleanly in 3.72s with zero warnings; production bundle size: 132.05 kB gzipped JavaScript, 2.95 kB gzipped CSS.
+- **Execution Results:** **175 tests passed across 7 test suites (0 failed, 0 skipped)** in 2.68s.
+- **Phase 9 UX Hardening Tests Added:**
+  - `runToCompletion drains events safely and yields identical outcome to stepped execution` (deterministic equality).
+  - `correctly tracks isComplete and semantic status transitions` (READY -> WAITING_FOR_ACK -> COMPLETED).
+  - `correctly segments multiline message payloads without data corruption` (multiline newline handling).
+  - `renders the polished multiline textarea, collapsible guide, and instant playback controls` (SSR assertion).
+- **Production Build Results:** Vite v6.4.4 compiled cleanly in 3.72s with zero warnings; production bundle size: 135 kB gzipped JavaScript, 3.87 kB gzipped CSS.
 - **Dev Server Validation:** Launched Vite dev server on port 5173; probe request returned `HTTP_STATUS: 200` with clean initial document response.
 - **Distinction of Testing Tiers:**
   - *Automated Unit & Integration Tests:* 171 automated assertions covering bitwise logic, state machines, and SSR renders.

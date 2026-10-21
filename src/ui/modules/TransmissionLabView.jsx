@@ -44,9 +44,10 @@ export default function TransmissionLabView() {
 
   // Animation & Playback state
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playSpeedMs, setPlaySpeedMs] = useState(300);
+  const [playSpeedMs, setPlaySpeedMs] = useState(100); // Default to Normal (100ms)
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [showVivaHelper, setShowVivaHelper] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   // Coordinator Instance Ref
   const coordinatorRef = useRef(null);
@@ -121,6 +122,12 @@ export default function TransmissionLabView() {
     if (isPlaying) {
       intervalId = setInterval(() => {
         if (coordinatorRef.current) {
+          // If simulation cycle has completed, halt playback cleanly
+          if (coordinatorRef.current.isComplete && coordinatorRef.current.isComplete()) {
+            setIsPlaying(false);
+            syncState();
+            return;
+          }
           coordinatorRef.current.stepTick();
           syncState();
         }
@@ -134,8 +141,32 @@ export default function TransmissionLabView() {
   // Transmit Message handler
   const handleSendMessage = () => {
     if (!messageInput.trim()) return;
-    coordinatorRef.current.sendMessage(messageInput);
+    coordinatorRef.current.sendMessage(messageInput.trim());
     syncState();
+  };
+
+  // Play/Pause Toggle with smart auto-transmit if empty
+  const handleTogglePlay = () => {
+    if (!isPlaying) {
+      if (coordinatorRef.current && coordinatorRef.current.getAllFrames().length === 0 && messageInput.trim()) {
+        coordinatorRef.current.sendMessage(messageInput.trim());
+        syncState();
+      }
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  // Instant / Run to Completion Handler
+  const handleRunToCompletion = () => {
+    setIsPlaying(false);
+    if (coordinatorRef.current) {
+      // If nothing has been sent yet, initiate transmission first
+      if (coordinatorRef.current.getAllFrames().length === 0 && messageInput.trim()) {
+        coordinatorRef.current.sendMessage(messageInput.trim());
+      }
+      coordinatorRef.current.runToCompletion(500);
+      syncState();
+    }
   };
 
   // Preset loader handler
@@ -146,6 +177,14 @@ export default function TransmissionLabView() {
     setProtocol(coordinatorRef.current.config.protocol);
     setFcsType(coordinatorRef.current.config.fcsType);
     setFramingType(coordinatorRef.current.config.framingType);
+    setMaxPayloadChunk(coordinatorRef.current.config.maxPayloadChunk);
+
+    // Reflect preset payload in message input
+    const frames = coordinatorRef.current.getAllFrames();
+    if (frames.length > 0 && frames[0].payloadText) {
+      const presetPayload = frames.map((f) => f.payloadText).join('');
+      setMessageInput(presetPayload);
+    }
     syncState();
   };
 
@@ -176,6 +215,51 @@ export default function TransmissionLabView() {
     coordinatorRef.current.stepEvent();
     syncState();
   };
+
+  // Live segmentation calculation
+  const chunkInfo = useMemo(() => {
+    const len = messageInput.length;
+    const chunkSz = Math.max(1, maxPayloadChunk);
+    const count = len > 0 ? Math.ceil(len / chunkSz) : 0;
+    return {
+      charCount: len,
+      chunkSize: chunkSz,
+      frameCount: count,
+      summary:
+        count === 0
+          ? 'Enter text to begin'
+          : count === 1
+          ? '1 single frame'
+          : `${count} frames (${Math.min(len, chunkSz)} chars/frame max)`,
+    };
+  }, [messageInput, maxPayloadChunk]);
+
+  // Derived simulation status & badges
+  const simStatus = useMemo(() => {
+    if (isPlaying) {
+      return {
+        state: 'RUNNING',
+        label: 'Simulating (Playing)',
+        description: `Discrete-event clock advancing at ${playSpeedMs} ms/tick.`,
+        badgeClass: 'sim-status-running',
+      };
+    }
+    const current =
+      telemetry.status ||
+      (coordinatorRef.current
+        ? coordinatorRef.current.getStatus()
+        : { state: 'READY', label: 'Ready to Transmit', description: '' });
+
+    let badgeClass = 'sim-status-ready';
+    if (current.state === 'COMPLETED') badgeClass = 'sim-status-completed';
+    else if (current.state === 'WAITING_FOR_ACK') badgeClass = 'sim-status-waiting';
+    else if (current.state === 'COLLISION') badgeClass = 'sim-status-retransmitting';
+    else if (current.state === 'BACKING_OFF') badgeClass = 'sim-status-waiting';
+    else if (current.state === 'TRANSMITTING') badgeClass = 'sim-status-running';
+    else if (current.state === 'PAUSED') badgeClass = 'sim-status-paused';
+
+    return { ...current, badgeClass };
+  }, [isPlaying, telemetry.status, playSpeedMs]);
 
   // Currently selected frame inspection record
   const selectedInspection = useMemo(() => {
@@ -230,7 +314,60 @@ export default function TransmissionLabView() {
         </div>
       </div>
 
-      {/* 2. Educational Presets Bar */}
+      {/* 2. Collapsible Student & Viva Help Guide */}
+      <details className="help-guide-card">
+        <summary className="help-guide-summary">
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>📘</span>
+            <span>How This Simulation Works (Student &amp; Viva Guide)</span>
+          </span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)' }}>Click to Expand / Collapse</span>
+        </summary>
+        <div className="help-guide-content">
+          <p style={{ marginBottom: '0.5rem' }}>
+            This laboratory models the exact Layer-2 physical transmission lifecycle across a discrete-event virtual clock:
+          </p>
+          <div className="help-steps-list">
+            <div className="help-step-item">
+              <div className="help-step-number">1. Payload Segmentation</div>
+              The upper-layer application message is split into discrete chunks of at most {maxPayloadChunk} characters.
+            </div>
+            <div className="help-step-item">
+              <div className="help-step-number">2. Header Assembly</div>
+              The protocol state machine assigns the next valid sequence number, expected ACK, and frame type (DATA/ACK).
+            </div>
+            <div className="help-step-item">
+              <div className="help-step-number">3. Error Detection (FCS)</div>
+              The selected algorithm (CRC, Checksum, or Parity) calculates mathematical redundancy bits over exact wire bytes.
+            </div>
+            <div className="help-step-item">
+              <div className="help-step-number">4. Framing &amp; Transparency</div>
+              Delimiter flags (e.g. 0x7E or 01111110) are applied; bit/byte stuffing escapes reserved flags to prevent premature frame termination.
+            </div>
+            <div className="help-step-item">
+              <div className="help-step-number">5. Channel &amp; Propagation</div>
+              A simulated transmission channel schedules serialization and physical propagation delay events. Fault injection can drop or corrupt frames.
+            </div>
+            <div className="help-step-item">
+              <div className="help-step-number">6. Deframing &amp; FCS Check</div>
+              The receiver destuffs the wire stream, extracts fields, and independently recalculates the FCS. If corrupted, the frame is rejected.
+            </div>
+            <div className="help-step-item">
+              <div className="help-step-number">7. ARQ Protocols (Profile A)</div>
+              Sliding-window state machines (Stop-and-Wait, GBN, Selective Repeat) manage timers, acknowledgements, and retransmissions.
+            </div>
+            <div className="help-step-item">
+              <div className="help-step-number">8. CSMA/CD MAC (Profile B)</div>
+              Demonstrates shared-bus Ethernet contention, 2τ collision detection, 32-bit jam signals, and Truncated BEB without sliding-window ARQ.
+            </div>
+          </div>
+          <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            * Note: This simulation runs on a discrete-event virtual clock (1 tick = 10 µs). It does not send real socket traffic over your physical Wi-Fi or Ethernet card.
+          </div>
+        </div>
+      </details>
+
+      {/* 3. Educational Presets Bar */}
       <div className="card" style={{ padding: '0.85rem 1.25rem', marginBottom: '1.25rem', background: 'rgba(26, 34, 52, 0.7)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -270,37 +407,86 @@ export default function TransmissionLabView() {
         </div>
       </div>
 
-      {/* 3. Configuration & Transmission Controls */}
+      {/* 4. Configuration & Transmission Controls Card */}
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 className="card-title">1. Transmission Configuration &amp; Message Submission</h3>
-          <span className="badge badge-info">Virtual Tick: t = {telemetry.currentTick}</span>
+          <span className="badge badge-info" style={{ fontFamily: 'var(--font-mono)' }}>
+            Virtual Clock: t = {telemetry.currentTick} ticks
+          </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-          {/* Message Input */}
-          <div className="form-group" style={{ gridColumn: 'span 2' }}>
-            <label className="form-label">Upper-Layer Message Payload:</label>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                type="text"
-                className="form-input"
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                placeholder="Enter text to transmit..."
-                style={{ fontFamily: 'var(--font-mono)' }}
-              />
-              <button className="btn btn-primary" onClick={handleSendMessage}>
-                <span>🚀 Transmit</span>
+        {/* Multiline Message Input Section */}
+        <div className="lab-message-section">
+          <div className="lab-message-header">
+            <label className="form-label" style={{ marginBottom: 0 }}>
+              <span>Message Payload</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'none' }}>
+                {chunkInfo.charCount} characters entered
+              </span>
+            </label>
+            <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick Samples:</span>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
+                onClick={() => setMessageInput('NETWORKS LAB 2026')}
+              >
+                NETWORKS
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
+                onClick={() => setMessageInput('HELLO WORLD')}
+              >
+                HELLO
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
+                onClick={() => setMessageInput('FLAG TEST: ~0x7E~')}
+              >
+                FLAGS (~0x7E~)
               </button>
             </div>
-            <span className="form-hint">
-              Payload size: {messageInput.length} chars. Max chunk: {maxPayloadChunk} chars → Splits into {Math.ceil(messageInput.length / maxPayloadChunk) || 1} frame(s).
-            </span>
           </div>
 
+          <textarea
+            className="form-textarea"
+            rows={3}
+            value={messageInput}
+            onChange={(e) => setMessageInput(e.target.value)}
+            placeholder="Type the message you want to transmit (e.g., NETWORKS LAB 2026)..."
+          />
+
+          <div className="lab-message-footer">
+            <div className="chunk-segment-pill">
+              <span>📦 Segmentation:</span>
+              <strong>
+                {chunkInfo.frameCount === 0
+                  ? '0 frames (Empty)'
+                  : `${chunkInfo.frameCount} frame(s) at max ${maxPayloadChunk} chars/frame`}
+              </strong>
+            </div>
+
+            <button
+              className="btn btn-primary"
+              onClick={handleSendMessage}
+              disabled={!messageInput.trim() || isPlaying}
+              style={{ minWidth: '150px' }}
+            >
+              <span>🚀 Transmit Payload</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Configuration Selects Grid */}
+        <div className="lab-config-grid" style={{ marginBottom: '1.25rem' }}>
           {/* Framing Algorithm */}
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Framing Algorithm:</label>
             <select
               className="form-select"
@@ -317,7 +503,7 @@ export default function TransmissionLabView() {
           </div>
 
           {/* Error Control (FCS) */}
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Error-Control Algorithm (FCS):</label>
             <select
               className="form-select"
@@ -335,9 +521,9 @@ export default function TransmissionLabView() {
             </select>
           </div>
 
-          {/* Protocol Selection (Profile A only) */}
-          {profile === ProfileType.PROFILE_A && (
-            <div className="form-group">
+          {/* Protocol Selection (Profile A) or Station Selection (Profile B) */}
+          {profile === ProfileType.PROFILE_A ? (
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Flow Control &amp; ARQ Protocol:</label>
               <select
                 className="form-select"
@@ -352,11 +538,46 @@ export default function TransmissionLabView() {
                 <option value={FlowProtocol.SELECTIVE_REPEAT}>Selective Repeat ARQ (Ws=4, Selective ACK)</option>
               </select>
             </div>
+          ) : (
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Bus Source &amp; Destination:</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                <select
+                  className="form-select"
+                  value={sourceStation}
+                  onChange={(e) => {
+                    setSourceStation(e.target.value);
+                    handleReset({ sourceStation: e.target.value });
+                  }}
+                >
+                  <option value="A">Station A (0m)</option>
+                  <option value="B">Station B (100m)</option>
+                  <option value="C">Station C (200m)</option>
+                  <option value="D">Station D (300m)</option>
+                </select>
+                <select
+                  className="form-select"
+                  value={destStation}
+                  onChange={(e) => {
+                    setDestStation(e.target.value);
+                    handleReset({ destStation: e.target.value });
+                  }}
+                >
+                  <option value="D">To Station D (300m)</option>
+                  <option value="C">To Station C (200m)</option>
+                  <option value="B">To Station B (100m)</option>
+                  <option value="A">To Station A (0m)</option>
+                </select>
+              </div>
+            </div>
           )}
 
-          {/* Chunk size */}
-          <div className="form-group">
-            <label className="form-label">Max Chunk (chars/frame):</label>
+          {/* Max Payload Chunk Size */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">
+              <span>Max Chunk Size:</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Range: 1–64</span>
+            </label>
             <input
               type="number"
               className="form-input"
@@ -364,7 +585,7 @@ export default function TransmissionLabView() {
               max="64"
               value={maxPayloadChunk}
               onChange={(e) => {
-                const val = Math.max(1, parseInt(e.target.value) || 1);
+                const val = Math.max(1, Math.min(64, parseInt(e.target.value) || 1));
                 setMaxPayloadChunk(val);
                 handleReset({ maxPayloadChunk: val });
               }}
@@ -372,71 +593,155 @@ export default function TransmissionLabView() {
           </div>
         </div>
 
-        {/* Playback Controls & Fault Injection Action Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem' }}>
-          {/* Simulation Stepper */}
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <button
-              className={`btn ${isPlaying ? 'btn-danger' : 'btn-primary'}`}
-              onClick={() => setIsPlaying(!isPlaying)}
-            >
-              {isPlaying ? '⏸ Pause' : '▶ Play'}
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={handleStepTick}>
-              ⏭ Step Tick (+1)
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={handleStepEvent}>
-              ⏩ Step Event
-            </button>
-            <button className="btn btn-outline btn-sm" onClick={() => handleReset()}>
-              🔄 Reset
-            </button>
+        {/* Playback Controls & Status Toolbar */}
+        <div className="playback-card">
+          <div className="playback-toolbar">
+            {/* Simulation Actions */}
+            <div className="playback-actions">
+              <button
+                className={`btn ${isPlaying ? 'btn-danger' : 'btn-primary'}`}
+                onClick={handleTogglePlay}
+                title={isPlaying ? 'Pause simulation playback' : 'Start simulation playback'}
+              >
+                {isPlaying ? '⏸ Pause' : '▶ Play'}
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleStepTick}
+                disabled={isPlaying}
+                title="Advance simulation by exactly 1 virtual clock tick"
+              >
+                ⏭ Step Tick (+1)
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleStepEvent}
+                disabled={isPlaying}
+                title="Execute next scheduled discrete event from priority queue"
+              >
+                ⏩ Step Event
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleRunToCompletion}
+                title="Safely drain queue and process all events to completion instantly without skipping protocol logic"
+                style={{
+                  background: 'var(--accent-emerald)',
+                  borderColor: 'var(--accent-emerald)',
+                  color: '#041017',
+                  fontWeight: 700,
+                }}
+              >
+                ⚡ Instant / Complete
+              </button>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => handleReset()}
+                title="Stop playback and reset simulation state to tick 0"
+              >
+                🔄 Reset
+              </button>
+            </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              <span>Speed:</span>
-              <input
-                type="range"
-                min="100"
-                max="800"
-                step="50"
-                value={playSpeedMs}
-                onChange={(e) => setPlaySpeedMs(parseInt(e.target.value))}
-                style={{ width: '80px' }}
-              />
-              <span>{playSpeedMs}ms</span>
+            {/* Playback Speed Segmented Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                Speed:
+              </span>
+              <div className="speed-segment-control">
+                <button
+                  type="button"
+                  className={`speed-segment-btn ${playSpeedMs === 300 ? 'active' : ''}`}
+                  onClick={() => setPlaySpeedMs(300)}
+                  title="Slow mode: 300 ms per virtual tick (recommended for step inspection)"
+                >
+                  Slow (300ms)
+                </button>
+                <button
+                  type="button"
+                  className={`speed-segment-btn ${playSpeedMs === 100 ? 'active' : ''}`}
+                  onClick={() => setPlaySpeedMs(100)}
+                  title="Normal mode: 100 ms per virtual tick (recommended default)"
+                >
+                  Normal (100ms)
+                </button>
+                <button
+                  type="button"
+                  className={`speed-segment-btn ${playSpeedMs === 30 ? 'active' : ''}`}
+                  onClick={() => setPlaySpeedMs(30)}
+                  title="Fast mode: 30 ms per virtual tick (10x faster)"
+                >
+                  Fast (30ms)
+                </button>
+              </div>
+            </div>
+
+            {/* Simulation Status Badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div className={`sim-status-banner ${simStatus.badgeClass}`}>
+                <span className="sim-status-dot" />
+                <span>{simStatus.label}</span>
+              </div>
             </div>
           </div>
 
-          {/* Fault Injection Buttons (Profile A) */}
+          {/* Fault Injection Panel (Profile A) */}
           {profile === ProfileType.PROFILE_A && (
-            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Fault Injection:</span>
-              <button
-                className={`btn btn-sm ${pendingFaultData === 'CORRUPT' ? 'btn-danger' : 'btn-outline'}`}
-                onClick={() => handleSetDataFault(pendingFaultData === 'CORRUPT' ? null : 'CORRUPT')}
-                title="Inject bit corruption in next outgoing DATA frame"
+            <div className="fault-panel-card">
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                }}
               >
-                ⚡ Corrupt DATA
-              </button>
-              <button
-                className={`btn btn-sm ${pendingFaultData === 'DROP' ? 'btn-danger' : 'btn-outline'}`}
-                onClick={() => handleSetDataFault(pendingFaultData === 'DROP' ? null : 'DROP')}
-                title="Drop next outgoing DATA frame in channel"
-              >
-                ❌ Drop DATA
-              </button>
-              <button
-                className={`btn btn-sm ${pendingFaultAck === 'DROP' ? 'btn-danger' : 'btn-outline'}`}
-                onClick={() => handleSetAckFault(pendingFaultAck === 'DROP' ? null : 'DROP')}
-                title="Drop next reverse ACK frame to test duplicate detection"
-              >
-                🔁 Drop ACK
-              </button>
-              {(pendingFaultData || pendingFaultAck) && (
-                <button className="btn btn-sm btn-secondary" onClick={handleClearFaults}>
-                  🧹 Clear Fault
-                </button>
-              )}
+                <div>
+                  <span
+                    style={{
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      color: 'var(--accent-rose)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    ⚡ Physical Channel Fault Injection (Interactive Testing)
+                  </span>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0 0' }}>
+                    Arm a fault for the next transmission to observe receiver FCS rejection or timeout retransmissions.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    className={`btn btn-sm ${pendingFaultData === 'CORRUPT' ? 'btn-danger' : 'btn-outline'}`}
+                    onClick={() => handleSetDataFault(pendingFaultData === 'CORRUPT' ? null : 'CORRUPT')}
+                    title="Flip a bit on the wire during forward DATA transmission"
+                  >
+                    ⚡ Corrupt DATA
+                  </button>
+                  <button
+                    className={`btn btn-sm ${pendingFaultData === 'DROP' ? 'btn-danger' : 'btn-outline'}`}
+                    onClick={() => handleSetDataFault(pendingFaultData === 'DROP' ? null : 'DROP')}
+                    title="Silently drop next forward DATA frame in channel"
+                  >
+                    ❌ Drop DATA
+                  </button>
+                  <button
+                    className={`btn btn-sm ${pendingFaultAck === 'DROP' ? 'btn-danger' : 'btn-outline'}`}
+                    onClick={() => handleSetAckFault(pendingFaultAck === 'DROP' ? null : 'DROP')}
+                    title="Drop next reverse ACK to test duplicate frame suppression"
+                  >
+                    🔁 Drop ACK
+                  </button>
+                  {(pendingFaultData || pendingFaultAck) && (
+                    <button className="btn btn-sm btn-secondary" onClick={handleClearFaults}>
+                      🧹 Clear Armed Faults
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>

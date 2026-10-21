@@ -348,5 +348,72 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
       expect(macHtml).toContain('CSMA/CD');
       expect(overviewHtml).toContain('Project Architecture &amp; Overview');
     });
+
+    it('renders the polished multiline textarea, collapsible guide, and instant playback controls', () => {
+      const html = renderToString(React.createElement(TransmissionLabView));
+      expect(html).toContain('Message Payload');
+      expect(html).toContain('form-textarea');
+      expect(html).toContain('How This Simulation Works (Student &amp; Viva Guide)');
+      expect(html).toContain('Instant / Complete');
+      expect(html).toContain('Speed:');
+      expect(html).toContain('Slow (300ms)');
+      expect(html).toContain('Normal (100ms)');
+      expect(html).toContain('Fast (30ms)');
+    });
+  });
+
+  describe('Playback Controls, Instant Execution & Determinism (Phase 9 UX)', () => {
+    it('runToCompletion drains events safely and yields identical outcome to stepped execution', () => {
+      // 1. Stepped execution
+      const steppedCoord = new TransmissionLabCoordinator({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        maxPayloadChunk: 4,
+      });
+      steppedCoord.sendMessage('TESTING_PAYLOAD');
+      steppedCoord.runUntil((c) => c.isComplete(), 150);
+      const steppedTele = steppedCoord.getTelemetry();
+
+      // 2. Instant runToCompletion
+      const instantCoord = new TransmissionLabCoordinator({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        maxPayloadChunk: 4,
+      });
+      instantCoord.sendMessage('TESTING_PAYLOAD');
+      const completionResult = instantCoord.runToCompletion(150);
+      const instantTele = instantCoord.getTelemetry();
+
+      expect(completionResult.completed).toBe(true);
+      expect(instantCoord.isComplete()).toBe(true);
+      expect(instantTele.delivered).toBe(steppedTele.delivered);
+      expect(instantCoord.deliveredMessages).toEqual(steppedCoord.deliveredMessages);
+      expect(instantTele.totalAttempts).toBe(steppedTele.totalAttempts);
+      expect(instantTele.channelUtilization).toBe(steppedTele.channelUtilization);
+    });
+
+    it('correctly tracks isComplete and semantic status transitions', () => {
+      coordinator.reset();
+      expect(coordinator.isComplete()).toBe(false);
+      expect(coordinator.getStatus().state).toBe('READY');
+
+      coordinator.sendMessage('DATA');
+      expect(coordinator.isComplete()).toBe(false);
+
+      coordinator.stepTick(); // In transit
+      expect(coordinator.isComplete()).toBe(false);
+
+      coordinator.runToCompletion(100);
+      expect(coordinator.isComplete()).toBe(true);
+      expect(coordinator.getStatus().state).toBe('COMPLETED');
+    });
+
+    it('correctly segments multiline message payloads without data corruption', () => {
+      const multiline = "FIRST LINE\nSECOND LINE\nTHIRD LINE";
+      const chunks = coordinator.segmentPayload(multiline);
+      expect(chunks.length).toBeGreaterThan(1);
+      const reassembled = chunks.map((c) => c.chunkText).join('');
+      expect(reassembled).toBe(multiline);
+    });
   });
 });
