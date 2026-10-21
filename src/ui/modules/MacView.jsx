@@ -9,7 +9,7 @@
  * 3. Realistic Collision Detection during Vulnerability Window (tau).
  * 4. 32-bit Jam Signal Emission & Bus Disruption.
  * 5. Truncated Binary Exponential Backoff (BEB) Slot Countdown.
- * 6. Contention Presets & Comprehensive Viva Theory Panel.
+ * 6. Contention Presets & Classical Ethernet Bus Visualization.
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -764,69 +764,6 @@ export default function MacView() {
               </div>
             ))
           )}
-        </div>
-      </div>
-
-      {/* Viva Helper & Oral Exam Preparation Panel */}
-      <div className="viva-box" style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-        <div className="viva-box-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-          <div className="viva-title" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>🎓</span>
-            <span>Viva Helper & Technical Theory — Medium Access Control (CSMA/CD)</span>
-          </div>
-          <span className="badge badge-info">CS Computer Networks Oral Exam Preparation</span>
-        </div>
-
-        <div className="viva-q" style={{ fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '0.3rem' }}>
-          Q1: Why is CSMA/CD needed on a shared broadcast medium, and why did Ethernet transition to full-duplex switched links?
-        </div>
-        <div className="viva-a" style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: '1.6', marginBottom: '1rem' }}>
-          In classical shared coaxial Ethernet (10BASE5 / 10BASE2), all stations share a single electrical bus. If two stations transmit simultaneously, their electrical waveforms superimpose, corrupting both frames. CSMA/CD (Carrier Sense Multiple Access with Collision Detection) provides distributed arbitration without a central coordinator. Modern Ethernet uses dedicated twisted-pair (100BASE-TX, 1000BASE-T) or fiber cables connected to a central Switch. Because separate physical wire pairs exist for transmitting (TX) and receiving (RX) simultaneously (full duplex), collisions are physically impossible, making CSMA/CD completely unnecessary in modern switched Ethernet networks.
-        </div>
-
-        <div className="viva-q" style={{ fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '0.3rem' }}>
-          Q2: What is the fundamental difference between Carrier Sensing (CS) and Collision Detection (CD)?
-        </div>
-        <div className="viva-a" style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: '1.6', marginBottom: '1rem' }}>
-          <strong>Carrier Sensing (CS)</strong> is <em>listening before transmitting</em>: the station tests whether electrical signal energy currently covers its physical tap. If busy, the station defers. <strong>Collision Detection (CD)</strong> is <em>listening while transmitting</em>: the transmitter monitors the voltage level on the wire concurrently with its own transmission. If the measured voltage exceeds the normal single-transmitter threshold (|V₁ + V₂| &gt; V_threshold), the station immediately concludes a collision has occurred, aborts transmission, and frees the channel early rather than wasting the full frame duration.
-        </div>
-
-        <div className="viva-q" style={{ fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '0.3rem' }}>
-          Q3: Why can two stations still collide even if both execute 1-persistent carrier sensing before transmitting?
-        </div>
-        <div className="viva-a" style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: '1.6', marginBottom: '1rem' }}>
-          Because electromagnetic signals propagate through copper at a finite speed (approximately 200,000 km/s, or 5 ns/meter). If Station A at position x = 0 starts transmitting at t = 0, its signal wavefront takes τ = 10 virtual ticks to reach Station D at x = 100. During the interval [0, 9], Station D's carrier sensor locally observes an completely IDLE medium. If Station D has a frame queued and transmits at t = 4, both stations are now transmitting simultaneously and their signals will inevitably collide in the medium. The maximum one-way propagation delay τ is called the <strong>vulnerability window</strong>.
-        </div>
-
-        <div className="viva-q" style={{ fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '0.3rem' }}>
-          Q4: Why must a colliding station emit a 32-bit Jam Signal rather than immediately going silent?
-        </div>
-        <div className="viva-a" style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: '1.6', marginBottom: '1rem' }}>
-          If a transmitting station detects a collision and immediately stops transmitting, its transmission duration might be too brief to deliver detectable collision energy to the other transmitting station at the far end of the bus. Emitting a standardized 32-bit jam sequence (alternating 1s and 0s) ensures the collision energy lasts long enough to propagate across the entire cable length, guaranteeing that all participating stations detect the collision, abort their transmissions, increment their retry counters, and enter backoff.
-        </div>
-
-        <div className="viva-q" style={{ fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '0.3rem' }}>
-          Q5: Why is the Slot Time defined as 2τ, and how does this dictate Ethernet's minimum frame size (L_min = 2τ × R)?
-        </div>
-        <div className="viva-a" style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: '1.6', marginBottom: '1rem' }}>
-          In the worst-case scenario, Station A transmits at t = 0. Just before the signal reaches Station D at t = τ - ε, Station D begins transmitting. The collision occurs immediately next to D, and D detects it at once. However, the collision noise takes another τ ticks to travel all the way back to Station A, arriving at t = 2τ - ε. For Station A to detect this collision while still actively transmitting, the frame transmission duration must satisfy:
-          <br />
-          <code style={{ color: 'var(--accent-emerald)' }}>T_tx ≥ 2τ</code>, which implies <code style={{ color: 'var(--accent-emerald)' }}>L_min ≥ 2τ × Bandwidth (R)</code>.
-          <br />
-          In 10 Mbps classical Ethernet with a maximum network diameter of 2500m (yielding round-trip delay 2τ ≈ 51.2 μs), L_min = 51.2 μs × 10 Mbps = 512 bits = <strong>64 bytes</strong>. Any frame smaller than 64 bytes is padded by the Data Link Layer.
-        </div>
-
-        <div className="viva-q" style={{ fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '0.3rem' }}>
-          Q6: How does Truncated Binary Exponential Backoff (BEB) dynamically adapt to network load?
-        </div>
-        <div className="viva-a" style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: '1.6' }}>
-          After collision <em>c</em> (1-based), the station chooses a random slot <em>r</em> uniformly from the range [0, 2^k - 1], where <code style={{ color: 'var(--accent-amber)' }}>k = min(c, 10)</code>.
-          <br />
-          - On the 1st collision (c=1), k=1: slots [0, 1] (average delay = 0.5 slots).
-          - On the 2nd collision (c=2), k=2: slots [0, 3] (average delay = 1.5 slots).
-          - On the 10th collision (c=10), k=10: slots [0, 1023] (average delay ≈ 512 slots).
-          <br />
-          This exponential expansion dynamically spreads retransmissions across a wider time window as contention escalates, preventing repeated collisions. The exponent is truncated at k = 10 to avoid excessive delays, and transmissions are completely aborted if all 16 transmission attempts terminate in collisions (<code style={{ color: 'var(--accent-rose)' }}>c ≥ 16</code>) to prevent channel deadlock and buffer starvation.
         </div>
       </div>
     </div>

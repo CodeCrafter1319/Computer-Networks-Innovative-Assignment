@@ -53,9 +53,6 @@ export default function FramingView() {
   const [injectCharDesync, setInjectCharDesync] = useState(false);
   const [corruptedLengthVal, setCorruptedLengthVal] = useState(8);
 
-  // Show viva drawer toggle
-  const [showViva, setShowViva] = useState(true);
-
   // ==========================================
   // BIT STUFFING COMPUTATIONS
   // ==========================================
@@ -918,52 +915,6 @@ export default function FramingView() {
           )}
         </div>
       )}
-
-      {/* ======================================================== */}
-      {/* VIVA HELPER PANEL (COMMON TO ALL TECHNIQUES) */}
-      {/* ======================================================== */}
-      <div className="viva-box">
-        <div className="viva-box-header">
-          <div className="viva-title">
-            <span>🎓 Viva Helper & Technical Theory Panel</span>
-          </div>
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={() => setShowViva(!showViva)}
-          >
-            {showViva ? 'Hide Viva Guide' : 'Show Viva Guide'}
-          </button>
-        </div>
-
-        {showViva && (
-          <div>
-            <div className="viva-q">Q1: Why is framing necessary at the Data Link Layer?</div>
-            <div className="viva-a">
-              The Physical Layer simply transmits an unformatted, continuous stream of raw bits. The Data Link Layer must break this raw bit stream into discrete packets called <strong>frames</strong> so that the receiver can recognize where each transmission begins and ends, perform error detection (CRC/checksum), and handle flow control (ACKs).
-            </div>
-
-            <div className="viva-q">Q2: How does HDLC Bit Stuffing prevent accidental delimiter flag collisions?</div>
-            <div className="viva-a">
-              The reserved flag is <code>01111110</code> (six consecutive 1s). Whenever the transmitter notices five consecutive 1s in the user payload data, it unconditionally injects a <code>0</code> bit. Therefore, the pattern <code>01111110</code> can never accidentally appear inside the payload. On the receiving end, whenever five consecutive 1s are followed by a 0, the receiver discards the 0, restoring the exact original payload.
-            </div>
-
-            <div className="viva-q">Q3: Why is Character-Count framing rarely used in modern production protocols?</div>
-            <div className="viva-a">
-              Character-count framing suffers from <strong>catastrophic framing desynchronization</strong>. If transmission noise flips even a single bit in a length field, the receiver counts the wrong number of bytes, misinterprets ordinary payload bytes as the length header of the next frame, and permanently loses frame synchronization for all subsequent frames. Modern protocols instead use flag bytes with stuffing or physical layer code violations.
-            </div>
-
-            <div className="viva-q">Q4: What is the maximum overhead of Bit Stuffing?</div>
-            <div className="viva-a">
-              In the worst-case scenario where the user payload consists entirely of <code>1</code> bits, a <code>0</code> bit must be stuffed after every five 1s. This yields an overhead of 1 bit per 5 payload bits, or exactly <strong>20% (1/5)</strong> payload expansion, plus the 16-bit opening and closing flag delimiters.
-            </div>
-
-            <div className="viva-q">Q5: How does PPP octet stuffing (RFC 1662) differ from generic character stuffing?</div>
-            <div className="viva-a">
-              Under <strong>RFC 1662 Section 4.2</strong>, PPP escapes reserved octets by transmitting Control Escape (<code>0x7D</code>) followed by the octet with bit 5 inverted (<code>XOR 0x20</code>). Thus, FLAG (<code>0x7E</code>) becomes <code>[0x7D, 0x5E]</code> and ESC (<code>0x7D</code>) becomes <code>[0x7D, 0x5D]</code>. Generic character stuffing simply prefixes the reserved character with ESC (<code>[0x7D, 0x7E]</code> and <code>[0x7D, 0x7D]</code>). The RFC 1662 bit-inversion technique transforms escaped characters into printable ASCII characters, ensuring transparent transmission over asynchronous serial links.
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

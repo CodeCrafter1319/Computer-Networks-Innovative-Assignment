@@ -760,7 +760,7 @@ describe('FlowControlView Component Rendering Smoke Test', () => {
       expect(html).toContain('Channel Utilization (U)');
       expect(html).toContain('Success Ratio (Stx)');
       expect(html).toContain('Goodput');
-      expect(html).toContain('Viva Helper &amp; Technical Theory');
+      expect(html).toContain('Live Discrete-Event Packet Trace');
     }).not.toThrow();
   });
 

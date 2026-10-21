@@ -479,7 +479,7 @@ describe('MacView Component Rendering Smoke Test', () => {
       expect(html).toContain('Physical Shared Bus Canvas');
       expect(html).toContain('Educational Contention Presets');
       expect(html).toContain('Real-Time MAC Protocol Event Log');
-      expect(html).toContain('Viva Helper &amp; Technical Theory');
+      expect(html).toContain('Slot Time:');
     }).not.toThrow();
   });
 

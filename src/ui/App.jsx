@@ -123,7 +123,7 @@ export default function App({ defaultTab = 'flow-control' } = {}) {
 
               <div className="card">
                 <div className="card-header">
-                  <h3 className="card-title">Academic & Viva Design Principles</h3>
+                  <h3 className="card-title">Core Engineering &amp; Educational Principles</h3>
                 </div>
                 <ul style={{ listStylePosition: 'inside', color: 'var(--text-secondary)', lineHeight: '1.8' }}>
                   <li>
@@ -139,7 +139,7 @@ export default function App({ defaultTab = 'flow-control' } = {}) {
                     <strong>Mathematical Rigor:</strong> Exact modulo 2^m arithmetic, RFC 1662 compliance, CRC step traces
                   </li>
                   <li>
-                    <strong>Viva Helper Panel:</strong> Integrated theory, formulas, and examiner FAQ
+                    <strong>Interactive Visualizations:</strong> Animated transmission channels, real-time telemetry, and bit inspection
                   </li>
                   <li>
                     <strong>Authentic Telemetry:</strong> Metrics derived strictly from live simulated events

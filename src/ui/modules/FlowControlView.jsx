@@ -11,7 +11,7 @@
  * - Circular/linear sliding window slots displaying sender window, receiver window, timers, and sequence wraparound.
  * - Live discrete-event simulation engine controls: Play/Pause, Step Tick, Step Event, Send Frame, Send Batch.
  * - Real-time metrics tracking: throughput, measured efficiency, theoretical efficiency, and BDP.
- * - Viva Helper & Theory Panel with formulas, mathematical proofs, and common oral questions.
+ * - Technical derivations, sliding window mechanics, and real-time event logs.
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -814,129 +814,6 @@ export default function FlowControlView() {
               );
             })
           )}
-        </div>
-      </div>
-
-      {/* Viva Helper & Theory Panel */}
-      <div className="viva-box">
-        <div className="viva-box-header">
-          <div className="viva-title">
-            <span>🎓</span>
-            <span>Viva Helper & Technical Theory — Flow Control & ARQ</span>
-          </div>
-          <span className="badge badge-info">CS Computer Networks Oral Exam Preparation</span>
-        </div>
-
-        {/* Theoretical Derivations & Mathematical Proofs */}
-        <div style={{ marginBottom: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.7' }}>
-          <h4 style={{ color: 'var(--accent-cyan)', marginBottom: '0.4rem', fontSize: '0.95rem' }}>
-            Mathematical Proof of Window Size Limits
-          </h4>
-          <p style={{ marginBottom: '0.5rem' }}>
-            Given an <em>m</em>-bit sequence number space, the available sequence identifiers are{' '}
-            <code style={{ color: 'var(--accent-amber)' }}>M = 2^m</code> (ranging from 0 to 2^m - 1).
-          </p>
-          <ul style={{ listStylePosition: 'inside', marginBottom: '1rem' }}>
-            <li>
-              <strong>Stop-and-Wait ARQ:</strong> <code style={{ color: 'var(--accent-cyan)' }}>Ws = 1, Wr = 1, m = 1</code>.
-              Alternating 1-bit sequence space (0 and 1) is sufficient to detect duplicate frames caused by delayed or lost ACKs.
-            </li>
-            <li>
-              <strong>Go-Back-N ARQ:</strong> <code style={{ color: 'var(--accent-cyan)' }}>Ws ≤ 2^m - 1, Wr = 1</code>.
-              If window size were <code style={{ color: 'var(--accent-rose)' }}>Ws = 2^m</code>, and all ACKs for a full window were lost,
-              the sender would retransmit frame 0. The receiver, having wrapped around to 0, would mistakenly accept the retransmission as
-              a completely new frame! Setting <code style={{ color: 'var(--accent-emerald)' }}>Ws ≤ 2^m - 1</code> ensures the receiver's expected
-              sequence number can never overlap with the sender's unacknowledged base.
-            </li>
-            <li>
-              <strong>Selective Repeat ARQ:</strong> <code style={{ color: 'var(--accent-cyan)' }}>Ws ≤ 2^(m - 1) and Wr ≤ 2^(m - 1)</code>.
-              Because the receiver buffers out-of-order packets, the sum of sender and receiver window sizes must satisfy{' '}
-              <code style={{ color: 'var(--accent-emerald)' }}>Ws + Wr ≤ 2^m</code>. For symmetric windows,{' '}
-              <code style={{ color: 'var(--accent-emerald)' }}>W ≤ 2^(m - 1)</code>. If <code style={{ color: 'var(--accent-rose)' }}>W &gt; 2^(m - 1)</code>,
-              the receiver's current window and its previous window would overlap modulo 2^m, creating ambiguity as to whether an incoming
-              frame is a retransmission of old data or a new frame.
-            </li>
-          </ul>
-
-          <h4 style={{ color: 'var(--accent-cyan)', marginBottom: '0.4rem', fontSize: '0.95rem' }}>
-            Protocol Efficiency & The Parameter 'a'
-          </h4>
-          <p style={{ marginBottom: '0.5rem' }}>
-            Let <code style={{ color: 'var(--accent-amber)' }}>tp</code> be one-way propagation delay, and{' '}
-            <code style={{ color: 'var(--accent-amber)' }}>ttx</code> be frame transmission time on the wire.
-            The dimensionless parameter is <code style={{ color: 'var(--accent-emerald)' }}>a = tp / ttx</code>.
-          </p>
-          <ul style={{ listStylePosition: 'inside' }}>
-            <li>
-              <strong>Stop-and-Wait Efficiency:</strong>{' '}
-              <code style={{ color: 'var(--accent-cyan)' }}>η = 1 / (1 + 2a)</code>.
-              For high-latency links (e.g. satellite where <code style={{ color: 'var(--accent-amber)' }}>a &gt;&gt; 1</code>),
-              efficiency drops toward 0% because the sender sits idle waiting for the round-trip propagation time.
-            </li>
-            <li>
-              <strong>Pipelined (GBN & SR) Efficiency:</strong>{' '}
-              <code style={{ color: 'var(--accent-cyan)' }}>η = min(1, W / (1 + 2a))</code>.
-              To achieve 100% link utilization without transmission errors, the window size must fill the pipe:{' '}
-              <code style={{ color: 'var(--accent-emerald)' }}>W ≥ 1 + 2a</code> (the Bandwidth-Delay Product plus transmission time).
-            </li>
-          </ul>
-        </div>
-
-        {/* High-Yield Oral Exam Questions & Answers */}
-        <div className="viva-q">Q1: Why does Go-Back-N require Ws ≤ 2^m - 1 instead of 2^m?</div>
-        <div className="viva-a">
-          Consider m = 2 (modulus M = 4, sequence numbers 0, 1, 2, 3). Suppose Ws = 4. The sender transmits frames 0, 1, 2, 3.
-          The receiver receives all four frames, delivers them to the upper layer, and expects frame 0 next.
-          However, all four ACKs are lost in the reverse channel. The sender's timer expires and it retransmits frame 0.
-          When frame 0 arrives at the receiver, the receiver is expecting frame 0 from the NEXT window!
-          The receiver cannot distinguish whether this frame 0 is a duplicate of the old frame or the brand-new frame 0.
-          Restricting Ws to 2^m - 1 (Ws = 3) prevents this sequence overlap.
-        </div>
-
-        <div className="viva-q">Q2: In Selective Repeat, why must the receiver re-acknowledge frames that fall into the previous window [Rf - Wr, Rf)?</div>
-        <div className="viva-a">
-          If the receiver successfully received a frame and advanced its window, but the corresponding ACK was lost in transit,
-          the sender will eventually time out and retransmit that frame. The retransmitted frame will arrive at the receiver
-          with a sequence number in the PREVIOUS window. If the receiver simply ignores this frame because it was already delivered,
-          the sender will never receive an ACK, will keep timing out indefinitely, and the entire connection will deadlock.
-          Therefore, the receiver MUST send an ACK for any correctly received frame in [Rf - Wr, Rf) without delivering it again.
-        </div>
-
-        <div className="viva-q">Q3: How does timer management differ between Go-Back-N and Selective Repeat?</div>
-        <div className="viva-a">
-          In Go-Back-N, the sender maintains only a SINGLE timer for the oldest unacknowledged frame (Sf / base).
-          When an ACK arrives that advances the base, if there are still outstanding unacknowledged frames, the single timer is restarted.
-          If timeout occurs, ALL outstanding frames in the window are retransmitted.
-          In Selective Repeat, the sender maintains INDEPENDENT timers for each unacknowledged frame in the window.
-          On timeout, ONLY the specific frame that timed out is retransmitted, significantly saving bandwidth on noisy channels.
-        </div>
-
-        <div className="viva-q">Q4: What is the Bandwidth-Delay Product (BDP) and why is it critical for protocol design?</div>
-        <div className="viva-a">
-          BDP = Bandwidth (bits/sec) × Round-Trip Time (sec). It represents the maximum volume of unacknowledged data that can be
-          'in flight' inside the transmission medium at any instant. If the sender's window size W is smaller than 1 + 2a,
-          the sender will exhaust its window and be forced to idle while the pipe is empty, wasting channel capacity.
-          Selecting W ≥ 1 + 2a keeps the transmission pipe continuously full.
-        </div>
-
-        <div className="viva-q">Q5: What is the distinction between Channel Utilization, Transmission Success Ratio, and Goodput?</div>
-        <div className="viva-a">
-          These three metrics measure fundamentally different aspects of protocol performance:
-          <br /><br />
-          1. <strong>Channel Utilization (U):</strong> Measures physical medium temporal occupancy — the fraction of elapsed virtual time during which the forward channel was actively occupied serializing DATA frames (including both original attempts and retransmissions):
-          <br />
-          <code style={{ color: 'var(--accent-cyan)' }}>U = (Total Channel Busy Ticks) / Elapsed Virtual Ticks = (N_transmissions × Tt) / Telapsed</code>.
-          In a noiseless Stop-and-Wait link with Tt = 1 and Tp = 5, one frame transaction occupies 1 tick out of an 11-tick RTT cycle, yielding U = 1 / 11 ≈ 9.1% (matching the theoretical bound 1 / (1 + 2a)). Retransmissions increase physical channel occupancy.
-          <br /><br />
-          2. <strong>Transmission Success Ratio (Stx, Packet Efficiency):</strong> Measures frame conservation and loss overhead — the ratio of successfully delivered unique frames to total on-wire transmission attempts:
-          <br />
-          <code style={{ color: 'var(--accent-emerald)' }}>Stx = (FramesDelivered / TotalTransmissions) × 100%</code>.
-          On a noiseless link, Stx is 100% even if channel utilization is low. If 1 frame is dropped and retransmitted once successfully, Stx = 1 / 2 = 50%.
-          <br /><br />
-          3. <strong>Goodput (G):</strong> Measures effective application-layer delivery rate per unit time, excluding protocol headers, dropped packets, and duplicate retransmissions:
-          <br />
-          <code style={{ color: 'var(--accent-purple)' }}>G_frames = FramesDelivered / Telapsed (frames/tick)</code> and <code style={{ color: 'var(--accent-purple)' }}>G_bits = DeliveredBits / Telapsed (bits/tick)</code>.
-          Useful channel utilization is related by: <code style={{ color: 'var(--accent-amber)' }}>U_useful = (FramesDelivered × Tt) / Telapsed = U × (Stx / 100)</code>.
         </div>
       </div>
     </div>

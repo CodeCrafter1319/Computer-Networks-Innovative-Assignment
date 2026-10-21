@@ -3,13 +3,13 @@
  * 
  * Interactive Visualizer for Phase 8: Integrated End-to-End Data Link Layer Transmission Lab.
  * 
- * Demonstrates:
- * - 8-Stage Transmission Lifecycle (Payload -> Header -> FCS -> Framing -> Protocol Dispatch -> Channel -> Receiver Deframing/FCS -> Delivery)
- * - Profile A: Reliable Point-to-Point Link (Framing + FCS + ARQ: Stop-and-Wait, Go-Back-N, Selective Repeat)
- * - Profile B: Shared-Medium Ethernet Teaching Model (Framing + FCS + CSMA/CD + Collision Detection + BEB)
- * - Interactive Fault Injection (Corrupt DATA, Drop DATA, Delay DATA, Corrupt ACK, Drop ACK)
- * - Byte-level Frame Inspector with color-coded field decomposition
- * - Real-time metrics telemetry and Viva Helper panel
+ * Features:
+ * - Dominant Visual Simulation Canvas: Animated physical medium showing frame & ACK transit in real-time
+ * - Concrete Frame Queue & Segmentation View: Visual breakdown of payload into [Flag][Header][Payload][FCS][Flag]
+ * - Video-like Narration & Playback: Plain-English commentary explaining the active protocol events conditionally
+ * - Warm, accessible, educational light theme with high contrast and accessible controls
+ * - Interactive Fault Injection: Corrupt DATA, Drop DATA, Delay DATA, Drop ACK
+ * - Collapsible Technical Inspectors: 8-Stage wire lifecycle and discrete-event trace log
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -46,8 +46,6 @@ export default function TransmissionLabView() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeedMs, setPlaySpeedMs] = useState(100); // Default to Normal (100ms)
   const [selectedFrameId, setSelectedFrameId] = useState(null);
-  const [showVivaHelper, setShowVivaHelper] = useState(false);
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   // Coordinator Instance Ref
   const coordinatorRef = useRef(null);
@@ -122,7 +120,6 @@ export default function TransmissionLabView() {
     if (isPlaying) {
       intervalId = setInterval(() => {
         if (coordinatorRef.current) {
-          // If simulation cycle has completed, halt playback cleanly
           if (coordinatorRef.current.isComplete && coordinatorRef.current.isComplete()) {
             setIsPlaying(false);
             syncState();
@@ -160,7 +157,6 @@ export default function TransmissionLabView() {
   const handleRunToCompletion = () => {
     setIsPlaying(false);
     if (coordinatorRef.current) {
-      // If nothing has been sent yet, initiate transmission first
       if (coordinatorRef.current.getAllFrames().length === 0 && messageInput.trim()) {
         coordinatorRef.current.sendMessage(messageInput.trim());
       }
@@ -179,7 +175,6 @@ export default function TransmissionLabView() {
     setFramingType(coordinatorRef.current.config.framingType);
     setMaxPayloadChunk(coordinatorRef.current.config.maxPayloadChunk);
 
-    // Reflect preset payload in message input
     const frames = coordinatorRef.current.getAllFrames();
     if (frames.length > 0 && frames[0].payloadText) {
       const presetPayload = frames.map((f) => f.payloadText).join('');
@@ -277,17 +272,197 @@ export default function TransmissionLabView() {
     return '(No payload delivered yet)';
   }, [telemetry.deliveredMessages]);
 
+  // Active in-flight packet records on forward channel
+  const activeInFlightData = useMemo(() => {
+    if (!telemetry.forwardHistory || telemetry.forwardHistory.length === 0) return null;
+    const curTick = telemetry.currentTick;
+    // Find the latest transmission that is currently within its transit window
+    for (let i = telemetry.forwardHistory.length - 1; i >= 0; i--) {
+      const h = telemetry.forwardHistory[i];
+      if (curTick >= h.startTick) {
+        if (h.deliveryTick !== null && curTick < h.deliveryTick) {
+          return h;
+        }
+        if (h.outcome === 'DROPPED' && curTick <= h.startTick + (h.propagationDelay || 4)) {
+          return h;
+        }
+      }
+    }
+    return null;
+  }, [telemetry.forwardHistory, telemetry.currentTick]);
+
+  // Active in-flight packet records on reverse channel (ACK)
+  const activeInFlightAck = useMemo(() => {
+    if (!telemetry.reverseHistory || telemetry.reverseHistory.length === 0) return null;
+    const curTick = telemetry.currentTick;
+    for (let i = telemetry.reverseHistory.length - 1; i >= 0; i--) {
+      const h = telemetry.reverseHistory[i];
+      if (curTick >= h.startTick) {
+        if (h.deliveryTick !== null && curTick < h.deliveryTick) {
+          return h;
+        }
+        if (h.outcome === 'DROPPED' && curTick <= h.startTick + (h.propagationDelay || 4)) {
+          return h;
+        }
+      }
+    }
+    return null;
+  }, [telemetry.reverseHistory, telemetry.currentTick]);
+
+  // Live Plain-English Simulation Narration
+  const liveNarration = useMemo(() => {
+    const isComplete = coordinatorRef.current ? coordinatorRef.current.isComplete() : false;
+    const curTick = telemetry.currentTick;
+
+    if (allFrames.length === 0) {
+      return {
+        icon: '💡',
+        className: 'state-waiting',
+        text: 'Ready to transmit. Enter a message above and click "Transmit Payload" or "▶ Play" to begin the animated journey.',
+      };
+    }
+
+    if (isComplete || telemetry.status?.state === 'COMPLETED') {
+      return {
+        icon: '🎉',
+        className: 'state-completed',
+        text: `Transmission Complete! All ${telemetry.delivered || allFrames.length} frame(s) successfully delivered, FCS verified, and reassembled into the upper-layer message.`,
+      };
+    }
+
+    if (profile === ProfileType.PROFILE_A) {
+      if (activeInFlightData) {
+        const seq = activeInFlightData.transmittedFrame?.seq ?? 0;
+        const payload = activeInFlightData.transmittedFrame?.payloadText ?? '';
+        if (activeInFlightData.outcome === 'CORRUPTED') {
+          return {
+            icon: '⚡',
+            className: 'state-fault',
+            text: `Fault Injected: Frame #${seq} ("${payload}") is traversing the physical channel with corrupted bits! Receiver FCS verification will detect mismatch.`,
+          };
+        }
+        if (activeInFlightData.outcome === 'DROPPED') {
+          return {
+            icon: '❌',
+            className: 'state-fault',
+            text: `Channel Fault: Frame #${seq} was DROPPED in the channel! Sender's ARQ timer is running; a timeout will trigger automatic retransmission.`,
+          };
+        }
+        return {
+          icon: '📡',
+          className: 'state-transmitting',
+          text: `Frame #${seq} ("${payload}") is traversing the forward physical medium toward Receiver (t = ${activeInFlightData.startTick} → ${activeInFlightData.deliveryTick}).`,
+        };
+      }
+
+      if (activeInFlightAck) {
+        const ackNum = activeInFlightAck.transmittedFrame?.ack ?? activeInFlightAck.transmittedFrame?.seq ?? 1;
+        if (activeInFlightAck.outcome === 'DROPPED') {
+          return {
+            icon: '🔁',
+            className: 'state-fault',
+            text: `Reverse Link Fault: ACK #${ackNum} was dropped! Sender will time out and retransmit the frame. Receiver will suppress the duplicate.`,
+          };
+        }
+        return {
+          icon: '📩',
+          className: 'state-transmitting',
+          text: `Receiver accepted frame and generated ACK #${ackNum}. ACK is traversing the reverse channel back to Sender.`,
+        };
+      }
+
+      if (telemetry.status?.state === 'WAITING_FOR_ACK') {
+        return {
+          icon: '⏱️',
+          className: 'state-waiting',
+          text: `Sender (${protocol}) is waiting for incoming ACK or timer expiration. Channel is currently idle.`,
+        };
+      }
+
+      if (telemetry.retransmissions > 0) {
+        return {
+          icon: '🔁',
+          className: 'state-fault',
+          text: `Timeout expired! Sender initiated automatic retransmission for unacknowledged frame(s).`,
+        };
+      }
+
+      return {
+        icon: '🔄',
+        className: 'state-transmitting',
+        text: `Processing discrete-event queue at t = ${curTick} virtual ticks.`,
+      };
+    } else {
+      // Profile B: CSMA/CD
+      if (telemetry.status?.state === 'COLLISION') {
+        return {
+          icon: '💥',
+          className: 'state-fault',
+          text: `COLLISION DETECTED on the shared bus! Participating stations aborted transmission and emitted 32-bit jam signals.`,
+        };
+      }
+      if (telemetry.status?.state === 'BACKING_OFF') {
+        return {
+          icon: '⏳',
+          className: 'state-waiting',
+          text: `Collided stations are executing Truncated Binary Exponential Backoff (BEB) to choose a random deferral slot.`,
+        };
+      }
+      if (telemetry.status?.state === 'TRANSMITTING') {
+        return {
+          icon: '📡',
+          className: 'state-transmitting',
+          text: `Station is transmitting onto shared coaxial medium. Spatial signal wavefront is propagating along the bus.`,
+        };
+      }
+      return {
+        icon: '📡',
+        className: 'state-transmitting',
+        text: `Shared bus carrier sensing active. Stations listening before transmitting on coaxial medium.`,
+      };
+    }
+  }, [
+    profile,
+    protocol,
+    telemetry,
+    allFrames,
+    activeInFlightData,
+    activeInFlightAck,
+  ]);
+
+  // Compute forward data progress percentage (8% to 90%)
+  const dataProgressPct = useMemo(() => {
+    if (!activeInFlightData) return 50;
+    const { startTick, deliveryTick } = activeInFlightData;
+    const curTick = telemetry.currentTick;
+    const dur = Math.max(1, (deliveryTick || startTick + (activeInFlightData.propagationDelay || 4)) - startTick);
+    const elapsed = curTick - startTick;
+    const ratio = Math.max(0, Math.min(1, elapsed / dur));
+    return Math.round(8 + ratio * 82);
+  }, [activeInFlightData, telemetry.currentTick]);
+
+  // Compute reverse ACK progress percentage (90% to 8%)
+  const ackProgressPct = useMemo(() => {
+    if (!activeInFlightAck) return 50;
+    const { startTick, deliveryTick } = activeInFlightAck;
+    const curTick = telemetry.currentTick;
+    const dur = Math.max(1, (deliveryTick || startTick + (activeInFlightAck.propagationDelay || 4)) - startTick);
+    const elapsed = curTick - startTick;
+    const ratio = Math.max(0, Math.min(1, elapsed / dur));
+    return Math.round(90 - ratio * 82);
+  }, [activeInFlightAck, telemetry.currentTick]);
+
   return (
     <div className="transmission-lab-container">
       {/* 1. Header Banner */}
-      <div className="card" style={{ marginBottom: '1.25rem', borderLeft: '4px solid var(--accent-cyan)' }}>
+      <div className="card" style={{ marginBottom: '1.25rem', borderLeft: '4px solid var(--accent-blue)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
               <h2 className="card-title" style={{ fontSize: '1.4rem', color: 'var(--text-primary)' }}>
                 🔬 End-to-End Data Link Layer Transmission Lab
               </h2>
-              <span className="badge badge-info">Flagship Pipeline</span>
+              <span className="badge badge-info">Flagship Visual Simulation</span>
             </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: '850px' }}>
               Observe an upper-layer payload traverse all 8 stages of Data Link Layer processing: segmentation,
@@ -314,14 +489,14 @@ export default function TransmissionLabView() {
         </div>
       </div>
 
-      {/* 2. Collapsible Student & Viva Help Guide */}
+      {/* 2. Educational Architecture Guide */}
       <details className="help-guide-card">
         <summary className="help-guide-summary">
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span>📘</span>
-            <span>How This Simulation Works (Student &amp; Viva Guide)</span>
+            <span>How This Simulation Works (Student Architecture Guide)</span>
           </span>
-          <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)' }}>Click to Expand / Collapse</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--accent-blue)' }}>Click to Expand / Collapse</span>
         </summary>
         <div className="help-guide-content">
           <p style={{ marginBottom: '0.5rem' }}>
@@ -362,16 +537,16 @@ export default function TransmissionLabView() {
             </div>
           </div>
           <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            * Note: This simulation runs on a discrete-event virtual clock (1 tick = 10 µs). It does not send real socket traffic over your physical Wi-Fi or Ethernet card.
+            * Note: This simulation runs on a discrete-event virtual clock (1 tick = 10 µs). It does not send real socket traffic over physical interfaces.
           </div>
         </div>
       </details>
 
       {/* 3. Educational Presets Bar */}
-      <div className="card" style={{ padding: '0.85rem 1.25rem', marginBottom: '1.25rem', background: 'rgba(26, 34, 52, 0.7)' }}>
+      <div className="card" style={{ padding: '0.85rem 1.25rem', marginBottom: '1.25rem', background: '#ffffff' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span>🎓 Preset Scenarios:</span>
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span>⚡ Preset Scenarios:</span>
           </span>
           {profile === ProfileType.PROFILE_A ? (
             <>
@@ -407,10 +582,10 @@ export default function TransmissionLabView() {
         </div>
       </div>
 
-      {/* 4. Configuration & Transmission Controls Card */}
+      {/* 4. Message Input & Configuration Section */}
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 className="card-title">1. Transmission Configuration &amp; Message Submission</h3>
+          <h3 className="card-title">1. Transmission Configuration &amp; Frame Segmentation</h3>
           <span className="badge badge-info" style={{ fontFamily: 'var(--font-mono)' }}>
             Virtual Clock: t = {telemetry.currentTick} ticks
           </span>
@@ -476,14 +651,69 @@ export default function TransmissionLabView() {
               className="btn btn-primary"
               onClick={handleSendMessage}
               disabled={!messageInput.trim() || isPlaying}
-              style={{ minWidth: '150px' }}
+              style={{ minWidth: '160px' }}
             >
               <span>🚀 Transmit Payload</span>
             </button>
           </div>
+
+          {/* Concrete Frame Queue & Segmentation Ribbon */}
+          {allFrames.length > 0 && (
+            <div className="segmentation-queue-container">
+              <div className="segmentation-queue-header">
+                <span className="segmentation-queue-title">
+                  <span>🎞️ Concrete Frame Queue ({allFrames.length} Frames):</span>
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Click any frame card to inspect wire fields
+                </span>
+              </div>
+              <div className="frame-cards-row">
+                {allFrames.map((f, idx) => {
+                  const isSelected = selectedFrameId === f.id;
+                  let statusLabel = 'PENDING';
+                  let statusClass = 'frame-status-pending';
+
+                  if (f.stage8?.delivered) {
+                    statusLabel = 'DELIVERED';
+                    statusClass = 'frame-status-delivered';
+                  } else if (f.stage7 && !f.stage7.fcsVerified) {
+                    statusLabel = 'CORRUPTED';
+                    statusClass = 'frame-status-corrupted';
+                  } else if (activeInFlightData && activeInFlightData.transmittedFrame?.id === f.id) {
+                    statusLabel = 'IN TRANSIT';
+                    statusClass = 'frame-status-in-flight';
+                  } else if (f.attempt > 0) {
+                    statusLabel = `ATTEMPT #${f.attempt}`;
+                    statusClass = 'frame-status-transmitting';
+                  }
+
+                  return (
+                    <div
+                      key={f.id}
+                      className={`frame-queue-card ${isSelected ? 'selected' : ''}`}
+                      onClick={() => setSelectedFrameId(f.id)}
+                    >
+                      <div className="frame-card-top">
+                        <span className="frame-seq-badge">Frame #{f.seq ?? idx}</span>
+                        <span className={`frame-status-badge ${statusClass}`}>{statusLabel}</span>
+                      </div>
+                      <div className="frame-wire-preview">
+                        <span className="wire-tag wire-flag">Flag</span>
+                        <span className="wire-tag wire-header">Seq:{f.seq ?? idx}</span>
+                        <span className="wire-tag wire-payload">&quot;{f.payloadText}&quot;</span>
+                        <span className="wire-tag wire-fcs">FCS</span>
+                        <span className="wire-tag wire-flag">Flag</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Configuration Selects Grid */}
+        {/* Configuration Parameters Grid */}
         <div className="lab-config-grid" style={{ marginBottom: '1.25rem' }}>
           {/* Framing Algorithm */}
           <div className="form-group" style={{ marginBottom: 0 }}>
@@ -628,7 +858,7 @@ export default function TransmissionLabView() {
                 style={{
                   background: 'var(--accent-emerald)',
                   borderColor: 'var(--accent-emerald)',
-                  color: '#041017',
+                  color: '#ffffff',
                   fontWeight: 700,
                 }}
               >
@@ -684,419 +914,490 @@ export default function TransmissionLabView() {
               </div>
             </div>
           </div>
-
-          {/* Fault Injection Panel (Profile A) */}
-          {profile === ProfileType.PROFILE_A && (
-            <div className="fault-panel-card">
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '0.5rem',
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      color: 'var(--accent-rose)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    ⚡ Physical Channel Fault Injection (Interactive Testing)
-                  </span>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0 0' }}>
-                    Arm a fault for the next transmission to observe receiver FCS rejection or timeout retransmissions.
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    className={`btn btn-sm ${pendingFaultData === 'CORRUPT' ? 'btn-danger' : 'btn-outline'}`}
-                    onClick={() => handleSetDataFault(pendingFaultData === 'CORRUPT' ? null : 'CORRUPT')}
-                    title="Flip a bit on the wire during forward DATA transmission"
-                  >
-                    ⚡ Corrupt DATA
-                  </button>
-                  <button
-                    className={`btn btn-sm ${pendingFaultData === 'DROP' ? 'btn-danger' : 'btn-outline'}`}
-                    onClick={() => handleSetDataFault(pendingFaultData === 'DROP' ? null : 'DROP')}
-                    title="Silently drop next forward DATA frame in channel"
-                  >
-                    ❌ Drop DATA
-                  </button>
-                  <button
-                    className={`btn btn-sm ${pendingFaultAck === 'DROP' ? 'btn-danger' : 'btn-outline'}`}
-                    onClick={() => handleSetAckFault(pendingFaultAck === 'DROP' ? null : 'DROP')}
-                    title="Drop next reverse ACK to test duplicate frame suppression"
-                  >
-                    🔁 Drop ACK
-                  </button>
-                  {(pendingFaultData || pendingFaultAck) && (
-                    <button className="btn btn-sm btn-secondary" onClick={handleClearFaults}>
-                      🧹 Clear Armed Faults
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* 4. Eight-Stage Lifecycle Pipeline Visualizer */}
-      <div className="card" style={{ marginBottom: '1.25rem' }}>
-        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 className="card-title">2. Explicit 8-Stage Transmission Lifecycle</h3>
-          {allFrames.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Inspect Frame:</span>
-              {allFrames.map((f, idx) => (
-                <button
-                  key={f.id}
-                  className={`btn btn-sm ${selectedFrameId === f.id ? 'btn-primary' : 'btn-outline'}`}
-                  onClick={() => setSelectedFrameId(f.id)}
-                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
-                >
-                  #{f.seq ?? idx}
-                </button>
-              ))}
-            </div>
-          )}
+      {/* 5. Live Plain-English Narration Banner */}
+      <div className={`narration-banner ${liveNarration.className}`}>
+        <span className="narration-icon">{liveNarration.icon}</span>
+        <span className="narration-text">{liveNarration.text}</span>
+      </div>
+
+      {/* 6. DOMINANT VISUAL SIMULATION CANVAS */}
+      <div className="dominant-canvas-card">
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <div>
+            <h3 className="card-title" style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>🌐</span>
+              <span>Physical Transmission Medium &amp; End-to-End Canvas</span>
+            </h3>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Animated physical propagation across virtual clock ticks
+            </span>
+          </div>
+          <span className="badge badge-info" style={{ fontFamily: 'var(--font-mono)' }}>
+            One-Way Delay: {propagationDelay} ticks
+          </span>
         </div>
 
-        {selectedInspection ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
-            {/* Stage 1 */}
-            <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <strong style={{ color: 'var(--accent-cyan)', fontSize: '0.85rem' }}>Stage 1: Upper-Layer Payload</strong>
-                <span className="badge badge-info">{selectedInspection.stage1?.byteLength || 0} bytes</span>
+        {profile === ProfileType.PROFILE_A ? (
+          /* Profile A: Point-to-Point ARQ Visual Canvas */
+          <div className="canvas-layout-grid">
+            {/* Sender Node Card */}
+            <div className="canvas-station-card sender-station">
+              <div>
+                <div className="station-card-header">
+                  <span className="station-name">🖥️ Station A (Sender)</span>
+                  <span className="badge badge-info">TX</span>
+                </div>
+                <div style={{ marginTop: '0.65rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.82rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Protocol: </span>
+                    <strong style={{ color: 'var(--accent-blue)' }}>{protocol}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Window Status: </span>
+                    <strong style={{ fontFamily: 'var(--font-mono)' }}>
+                      {protocol === FlowProtocol.STOP_AND_WAIT
+                        ? `Ws=1 (Wait ACK)`
+                        : `[Base: ${telemetry.senderState?.base ?? 0}, Next: ${telemetry.senderState?.nextSeq ?? 0}]`}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Frames Queued: </span>
+                    <strong>{allFrames.length}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Timeout Timer: </span>
+                    <strong style={{ fontFamily: 'var(--font-mono)' }}>{timeoutDuration} ticks</strong>
+                  </div>
+                </div>
               </div>
-              <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-                Text: &quot;{selectedInspection.stage1?.payloadText}&quot;
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                Hex: {selectedInspection.stage1?.hexBytes}
-              </div>
-            </div>
-
-            {/* Stage 2 */}
-            <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <strong style={{ color: 'var(--accent-blue)', fontSize: '0.85rem' }}>Stage 2: Header Serialization</strong>
-                <span className="badge badge-info">m={selectedInspection.stage2?.m} bits</span>
-              </div>
-              <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-                Type: {selectedInspection.stage2?.type} | Seq: {selectedInspection.stage2?.seq} | Ack: {selectedInspection.stage2?.ack}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                Header Hex: {selectedInspection.stage2?.headerHex} | Wire Total: {selectedInspection.stage2?.wireByteCount}B
-              </div>
-            </div>
-
-            {/* Stage 3 */}
-            <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <strong style={{ color: 'var(--accent-emerald)', fontSize: '0.85rem' }}>Stage 3: Error Control (FCS)</strong>
-                <span className="badge badge-success">Protected</span>
-              </div>
-              <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', color: 'var(--accent-emerald)' }}>
-                FCS: {selectedInspection.stage3?.fcsHex} ({selectedInspection.stage3?.fcsType})
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                Computed over exact Wire Bytes (Header + Payload).
-              </div>
-            </div>
-
-            {/* Stage 4 */}
-            <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <strong style={{ color: 'var(--accent-purple)', fontSize: '0.85rem' }}>Stage 4: Framing &amp; Stuffing</strong>
-                <span className="badge badge-info">+{selectedInspection.stage4?.overheadCount} overhead</span>
-              </div>
-              <div className="mono-display" style={{ fontSize: '0.75rem', marginBottom: '0.5rem', overflowX: 'auto', whiteSpace: 'nowrap' }}>
-                {selectedInspection.stage4?.framedDisplay}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                Mode: {selectedInspection.stage4?.framingType}
-              </div>
-            </div>
-
-            {/* Stage 5 */}
-            <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <strong style={{ color: 'var(--accent-amber)', fontSize: '0.85rem' }}>Stage 5: Protocol Dispatch</strong>
-                <span className="badge badge-info">{profile === ProfileType.PROFILE_A ? protocol : 'CSMA/CD'}</span>
-              </div>
-              <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-                Dispatch Tick: t = {selectedInspection.stage5?.sentTick ?? 'Pending'} | Attempt: #{selectedInspection.attempt}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                {profile === ProfileType.PROFILE_A ? 'Dispatched via Sliding Window ARQ queue' : 'Sensing carrier on shared linear medium'}
-              </div>
-            </div>
-
-            {/* Stage 6 */}
-            <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <strong style={{ color: 'var(--accent-rose)', fontSize: '0.85rem' }}>Stage 6: Channel Transit</strong>
-                <span className={`badge ${selectedInspection.stage6?.faultApplied !== 'NONE' ? 'badge-danger' : 'badge-info'}`}>
-                  {selectedInspection.stage6?.faultApplied || 'TRANSIT'}
+              <div style={{ background: '#ffffff', padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', fontSize: '0.75rem' }}>
+                <span style={{ color: 'var(--text-muted)', display: 'block' }}>Upper Layer Input:</span>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+                  &quot;{messageInput || '(empty)'}&quot;
                 </span>
               </div>
-              <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-                {selectedInspection.stage6 ? (
-                  `t=${selectedInspection.stage6.startTick} → t=${selectedInspection.stage6.deliveryTick} (${selectedInspection.stage6.outcome})`
-                ) : (
-                  'In transit across physical medium...'
-                )}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                Propagation Delay: {propagationDelay} ticks. Fault: {selectedInspection.stage6?.faultApplied || 'NONE'}.
-              </div>
             </div>
 
-            {/* Stage 7 */}
-            <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <strong style={{ color: 'var(--accent-emerald)', fontSize: '0.85rem' }}>Stage 7: Receiver Processing</strong>
-                {selectedInspection.stage7 && (
-                  <span className={`badge ${selectedInspection.stage7.outcome === 'ACCEPTED' ? 'badge-success' : 'badge-danger'}`}>
-                    {selectedInspection.stage7.outcome}
+            {/* Central Transmission Medium Lanes */}
+            <div className="canvas-medium-track">
+              {/* Forward Channel Track (DATA ->) */}
+              <div className="medium-lane-container">
+                <span className="lane-direction-badge">
+                  <span>➡️</span> Forward Link: Station A → Station B (DATA Frames)
+                </span>
+                {activeInFlightData ? (
+                  <div
+                    className={`in-flight-packet in-flight-data ${
+                      activeInFlightData.outcome === 'CORRUPTED'
+                        ? 'in-flight-corrupted'
+                        : activeInFlightData.outcome === 'DROPPED'
+                        ? 'in-flight-dropped'
+                        : ''
+                    }`}
+                    style={{ left: `${dataProgressPct}%` }}
+                  >
+                    <span>📦 DATA #{activeInFlightData.transmittedFrame?.seq ?? 0}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>|</span>
+                    <span>&quot;{activeInFlightData.transmittedFrame?.payloadText ?? ''}&quot;</span>
+                    {activeInFlightData.outcome === 'CORRUPTED' && <span>⚡ [CORRUPT]</span>}
+                    {activeInFlightData.outcome === 'DROPPED' && <span>❌ [DROPPED]</span>}
+                  </div>
+                ) : (
+                  <div className="lane-idle-notice">── Forward Link Idle (Ready for Transmission) ──</div>
+                )}
+              </div>
+
+              {/* Reverse Channel Track (ACK <-) */}
+              <div className="medium-lane-container">
+                <span className="lane-direction-badge">
+                  <span>⬅️</span> Reverse Link: Station B → Station A (ACK Frames)
+                </span>
+                {activeInFlightAck ? (
+                  <div
+                    className={`in-flight-packet in-flight-ack ${
+                      activeInFlightAck.outcome === 'DROPPED' ? 'in-flight-dropped' : ''
+                    }`}
+                    style={{ left: `${ackProgressPct}%` }}
+                  >
+                    <span>📩 ACK #{activeInFlightAck.transmittedFrame?.ack ?? activeInFlightAck.transmittedFrame?.seq ?? 1}</span>
+                    {activeInFlightAck.outcome === 'DROPPED' && <span>❌ [DROPPED]</span>}
+                  </div>
+                ) : (
+                  <div className="lane-idle-notice">── Reverse Link Idle ──</div>
+                )}
+              </div>
+
+              {/* Physical Channel Fault Injection Controls */}
+              <div className="fault-panel-card" style={{ marginTop: 0, padding: '0.65rem 0.85rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-rose)' }}>
+                    ⚡ Channel Fault Injection:
                   </span>
-                )}
-              </div>
-              <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-                {selectedInspection.stage7 ? (
-                  `Deframing: ${selectedInspection.stage7.deframingSuccess ? 'OK' : 'FAIL'} | FCS: ${selectedInspection.stage7.fcsVerified ? 'VALID' : 'INVALID'}`
-                ) : (
-                  'Awaiting arrival at receiver...'
-                )}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                {selectedInspection.stage7?.fcsError || 'FCS matched receiver recomputation.'}
+                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      className={`btn btn-sm ${pendingFaultData === 'CORRUPT' ? 'btn-danger' : 'btn-outline'}`}
+                      onClick={() => handleSetDataFault(pendingFaultData === 'CORRUPT' ? null : 'CORRUPT')}
+                      title="Flip bit during forward DATA transmission"
+                    >
+                      ⚡ Corrupt DATA
+                    </button>
+                    <button
+                      className={`btn btn-sm ${pendingFaultData === 'DROP' ? 'btn-danger' : 'btn-outline'}`}
+                      onClick={() => handleSetDataFault(pendingFaultData === 'DROP' ? null : 'DROP')}
+                      title="Silently drop next forward DATA frame"
+                    >
+                      ❌ Drop DATA
+                    </button>
+                    <button
+                      className={`btn btn-sm ${pendingFaultAck === 'DROP' ? 'btn-danger' : 'btn-outline'}`}
+                      onClick={() => handleSetAckFault(pendingFaultAck === 'DROP' ? null : 'DROP')}
+                      title="Drop next reverse ACK to test duplicate suppression"
+                    >
+                      🔁 Drop ACK
+                    </button>
+                    {(pendingFaultData || pendingFaultAck) && (
+                      <button className="btn btn-sm btn-secondary" onClick={handleClearFaults}>
+                        🧹 Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Stage 8 */}
-            <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <strong style={{ color: 'var(--accent-cyan)', fontSize: '0.85rem' }}>Stage 8: Delivery &amp; Telemetry</strong>
-                {selectedInspection.stage8?.delivered ? (
-                  <span className="badge badge-success">DELIVERED</span>
-                ) : (
-                  <span className="badge badge-warning">{selectedInspection.stage8?.isDuplicate ? 'DUPLICATE DISCARDED' : 'PENDING'}</span>
-                )}
+            {/* Receiver Node Card */}
+            <div className="canvas-station-card receiver-station">
+              <div>
+                <div className="station-card-header">
+                  <span className="station-name">🖥️ Station B (Receiver)</span>
+                  <span className="badge badge-success">RX</span>
+                </div>
+                <div style={{ marginTop: '0.65rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.82rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Expected Seq: </span>
+                    <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-emerald)' }}>
+                      #{telemetry.receiverState?.expectedSeq ?? 0}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>FCS Check: </span>
+                    <strong style={{ color: 'var(--accent-emerald)' }}>
+                      {telemetry.corruptions > 0 && selectedInspection?.stage7 && !selectedInspection.stage7.fcsVerified
+                        ? 'INVALID (REJECTED)'
+                        : 'VALID (MATCH)'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Delivered Frames: </span>
+                    <strong>{telemetry.delivered ?? 0}</strong>
+                  </div>
+                  {protocol === FlowProtocol.SELECTIVE_REPEAT && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>Buffered Out-of-Order: </span>
+                      <strong style={{ fontFamily: 'var(--font-mono)' }}>
+                        {telemetry.receiverState?.receiverBuffer?.length > 0
+                          ? `[${telemetry.receiverState.receiverBuffer.join(', ')}]`
+                          : 'None'}
+                      </strong>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-                {selectedInspection.stage8?.summary || 'Transmission in progress...'}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                Delivered Tick: {selectedInspection.stage8?.deliveredTick ?? '—'}
+              <div style={{ background: '#ffffff', padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', fontSize: '0.75rem' }}>
+                <span style={{ color: 'var(--accent-emerald)', display: 'block', fontWeight: 700 }}>
+                  ✓ Reconstructed Payload:
+                </span>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+                  &quot;{reconstructedMessage}&quot;
+                </span>
               </div>
             </div>
           </div>
         ) : (
-          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-            Submit a message or load a preset scenario above to begin end-to-end transmission.
+          /* Profile B: Shared-Medium CSMA/CD Visual Bus */
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.25rem' }}>
+              {['A', 'B', 'C', 'D'].map((stationId) => {
+                const isSource = sourceStation === stationId;
+                const isDest = destStation === stationId;
+                return (
+                  <div
+                    key={stationId}
+                    className="canvas-station-card"
+                    style={{
+                      borderTop: isSource
+                        ? '4px solid var(--accent-blue)'
+                        : isDest
+                        ? '4px solid var(--accent-emerald)'
+                        : '4px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div className="station-card-header">
+                      <span className="station-name">Station {stationId}</span>
+                      <span className="badge badge-info">
+                        {isSource ? 'SRC' : isDest ? 'DEST' : 'TAPPED'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      Position: {stationId === 'A' ? '0m' : stationId === 'B' ? '100m' : stationId === 'C' ? '200m' : '300m'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="medium-lane-container" style={{ minHeight: '90px' }}>
+              <span className="lane-direction-badge">
+                <span>📡</span> Shared Coaxial Cable Bus (IEEE 802.3 Classical Ethernet)
+              </span>
+              <div className="lane-idle-notice">
+                {telemetry.status?.state === 'TRANSMITTING'
+                  ? `Signal Wavefront propagating from Station ${sourceStation} → Station ${destStation}...`
+                  : telemetry.status?.state === 'COLLISION'
+                  ? `💥 COLLISION IN PROGRESS: Signals superimposing in medium (|V1 + V2| > Vth). 32-bit Jam active!`
+                  : `── Shared Bus Medium Idle (Listening Before Transmitting) ──`}
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* 5. Telemetry & Channel Telemetry Dashboard */}
-      <div className="grid-2" style={{ marginBottom: '1.25rem' }}>
-        {/* Telemetry Metrics */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">3. Live Transmission Telemetry</h3>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-            <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Total Attempts</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent-cyan)' }}>
-                {telemetry.totalAttempts ?? telemetry.totalAttempts ?? 0}
+      {/* 7. Collapsible Technical Inspector: Detailed 8-Stage Wire Lifecycle */}
+      <details className="technical-inspector-card" open={allFrames.length > 0}>
+        <summary className="technical-inspector-summary">
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>🔍</span>
+            <strong>Detailed 8-Stage Wire Inspector (Selected Frame #{selectedInspection?.seq ?? 0})</strong>
+          </span>
+          <span className="badge badge-info">Explicit 8-Stage Transmission Lifecycle</span>
+        </summary>
+        <div className="technical-inspector-content">
+          {selectedInspection ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+              {/* Stage 1 */}
+              <div className="card" style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', padding: '1rem', margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--accent-cyan)', fontSize: '0.85rem' }}>Stage 1: Upper-Layer Payload</strong>
+                  <span className="badge badge-info">{selectedInspection.stage1?.byteLength || 0} bytes</span>
+                </div>
+                <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+                  Text: &quot;{selectedInspection.stage1?.payloadText}&quot;
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                  Hex: {selectedInspection.stage1?.hexBytes}
+                </div>
               </div>
-            </div>
-            <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Frames Delivered</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent-emerald)' }}>
-                {telemetry.delivered ?? telemetry.totalDelivered ?? 0}
-              </div>
-            </div>
-            <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Retransmissions</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent-amber)' }}>
-                {telemetry.retransmissions ?? telemetry.totalAborted ?? 0}
-              </div>
-            </div>
-            <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Corruptions</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent-rose)' }}>
-                {telemetry.corruptions ?? telemetry.totalCollisions ?? 0}
-              </div>
-            </div>
-            <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Duplicates Discarded</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent-purple)' }}>
-                {telemetry.duplicates ?? 0}
-              </div>
-            </div>
-            <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Channel Utilization</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
-                {telemetry.channelUtilization ?? telemetry.busUtilization ?? 0}%
-              </div>
-            </div>
-          </div>
 
-          {/* Upper-layer delivered message banner */}
-          <div style={{ background: 'var(--bg-secondary)', padding: '0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-emerald)', display: 'block', marginBottom: '0.25rem' }}>
-              ✓ Receiver Upper-Layer Reconstructed Stream:
-            </span>
-            <div className="mono-display" style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-              {reconstructedMessage}
-            </div>
-          </div>
-        </div>
+              {/* Stage 2 */}
+              <div className="card" style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', padding: '1rem', margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--accent-blue)', fontSize: '0.85rem' }}>Stage 2: Header Serialization</strong>
+                  <span className="badge badge-info">m={selectedInspection.stage2?.m} bits</span>
+                </div>
+                <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+                  Type: {selectedInspection.stage2?.type} | Seq: {selectedInspection.stage2?.seq} | Ack: {selectedInspection.stage2?.ack}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                  Header Hex: {selectedInspection.stage2?.headerHex} | Wire Total: {selectedInspection.stage2?.wireByteCount}B
+                </div>
+              </div>
 
-        {/* Chronological Event Log */}
-        <div className="card">
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="card-title">4. Discrete-Event Timeline Log</h3>
-            <span className="badge badge-info">{stageHistory.length} Events</span>
-          </div>
-          <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            {stageHistory.slice(-20).reverse().map((entry) => (
-              <div
-                key={entry.id}
-                style={{
-                  fontSize: '0.8rem',
-                  padding: '0.4rem 0.6rem',
-                  background: 'var(--bg-secondary)',
-                  borderRadius: 'var(--radius-sm)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <div>
-                  <span style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', marginRight: '0.5rem' }}>
-                    t={entry.tick}
-                  </span>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{entry.type}:</span>{' '}
-                  <span style={{ color: 'var(--text-secondary)' }}>
-                    {entry.eventType || entry.title || entry.description || `Frame #${entry.frameId ?? entry.seq ?? ''}`}
+              {/* Stage 3 */}
+              <div className="card" style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', padding: '1rem', margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--accent-emerald)', fontSize: '0.85rem' }}>Stage 3: Error Control (FCS)</strong>
+                  <span className="badge badge-success">Protected</span>
+                </div>
+                <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', color: 'var(--accent-emerald)' }}>
+                  FCS: {selectedInspection.stage3?.fcsHex} ({selectedInspection.stage3?.fcsType})
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  Computed over exact Wire Bytes (Header + Payload).
+                </div>
+              </div>
+
+              {/* Stage 4 */}
+              <div className="card" style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', padding: '1rem', margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--accent-purple)', fontSize: '0.85rem' }}>Stage 4: Framing &amp; Stuffing</strong>
+                  <span className="badge badge-info">+{selectedInspection.stage4?.overheadCount} overhead</span>
+                </div>
+                <div className="mono-display" style={{ fontSize: '0.75rem', marginBottom: '0.5rem', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+                  {selectedInspection.stage4?.framedDisplay}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  Mode: {selectedInspection.stage4?.framingType}
+                </div>
+              </div>
+
+              {/* Stage 5 */}
+              <div className="card" style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', padding: '1rem', margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--accent-amber)', fontSize: '0.85rem' }}>Stage 5: Protocol Dispatch</strong>
+                  <span className="badge badge-info">{profile === ProfileType.PROFILE_A ? protocol : 'CSMA/CD'}</span>
+                </div>
+                <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+                  Dispatch Tick: t = {selectedInspection.stage5?.sentTick ?? 'Pending'} | Attempt: #{selectedInspection.attempt}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  {profile === ProfileType.PROFILE_A ? 'Dispatched via Sliding Window ARQ queue' : 'Sensing carrier on shared linear medium'}
+                </div>
+              </div>
+
+              {/* Stage 6 */}
+              <div className="card" style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', padding: '1rem', margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--accent-rose)', fontSize: '0.85rem' }}>Stage 6: Channel Transit</strong>
+                  <span className={`badge ${selectedInspection.stage6?.faultApplied !== 'NONE' ? 'badge-danger' : 'badge-info'}`}>
+                    {selectedInspection.stage6?.faultApplied || 'TRANSIT'}
                   </span>
                 </div>
-                {entry.corrupted && <span className="badge badge-danger">CORRUPT</span>}
+                <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+                  {selectedInspection.stage6 ? (
+                    `t=${selectedInspection.stage6.startTick} → t=${selectedInspection.stage6.deliveryTick} (${selectedInspection.stage6.outcome})`
+                  ) : (
+                    'In transit across physical medium...'
+                  )}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  Propagation Delay: {propagationDelay} ticks. Fault: {selectedInspection.stage6?.faultApplied || 'NONE'}.
+                </div>
               </div>
-            ))}
-            {stageHistory.length === 0 && (
-              <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1.5rem' }}>
-                No events recorded yet.
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
-      {/* 6. Viva Helper Panel */}
-      <div className="card" style={{ borderLeft: '4px solid var(--accent-purple)' }}>
-        <div
-          className="card-header"
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-          onClick={() => setShowVivaHelper(!showVivaHelper)}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '1.2rem' }}>🎓</span>
-            <h3 className="card-title">Viva Helper &amp; Theoretical Examination Reference</h3>
-          </div>
-          <span className="btn btn-outline btn-sm">
-            {showVivaHelper ? 'Hide FAQ ▲' : 'Show Viva FAQ ▼'}
+              {/* Stage 7 */}
+              <div className="card" style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', padding: '1rem', margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--accent-emerald)', fontSize: '0.85rem' }}>Stage 7: Receiver Processing</strong>
+                  {selectedInspection.stage7 && (
+                    <span className={`badge ${selectedInspection.stage7.outcome === 'ACCEPTED' ? 'badge-success' : 'badge-danger'}`}>
+                      {selectedInspection.stage7.outcome}
+                    </span>
+                  )}
+                </div>
+                <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+                  {selectedInspection.stage7 ? (
+                    `Deframing: ${selectedInspection.stage7.deframingSuccess ? 'OK' : 'FAIL'} | FCS: ${selectedInspection.stage7.fcsVerified ? 'VALID' : 'INVALID'}`
+                  ) : (
+                    'Awaiting arrival at receiver...'
+                  )}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  {selectedInspection.stage7?.fcsError || 'FCS matched receiver recomputation.'}
+                </div>
+              </div>
+
+              {/* Stage 8 */}
+              <div className="card" style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', padding: '1rem', margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--accent-cyan)', fontSize: '0.85rem' }}>Stage 8: Delivery &amp; Telemetry</strong>
+                  {selectedInspection.stage8?.delivered ? (
+                    <span className="badge badge-success">DELIVERED</span>
+                  ) : (
+                    <span className="badge badge-warning">{selectedInspection.stage8?.isDuplicate ? 'DUPLICATE DISCARDED' : 'PENDING'}</span>
+                  )}
+                </div>
+                <div className="mono-display" style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+                  {selectedInspection.stage8?.summary || 'Transmission in progress...'}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  Delivered Tick: {selectedInspection.stage8?.deliveredTick ?? '—'}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>
+              Submit a message or load a preset scenario above to begin end-to-end transmission.
+            </div>
+          )}
+        </div>
+      </details>
+
+      {/* 8. Collapsible Technical Inspector: Telemetry & Discrete-Event Timeline Log */}
+      <details className="technical-inspector-card">
+        <summary className="technical-inspector-summary">
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>📊</span>
+            <strong>Live Transmission Telemetry &amp; Discrete-Event Log</strong>
           </span>
-        </div>
-
-        {showVivaHelper && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem', marginTop: '1rem' }}>
-            <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-                Q1: Why does FCS calculation precede Framing at the sender?
+          <span className="badge badge-info">{stageHistory.length} Events Recorded</span>
+        </summary>
+        <div className="technical-inspector-content">
+          <div className="grid-2" style={{ marginBottom: 0 }}>
+            {/* Telemetry Metrics */}
+            <div>
+              <h4 style={{ fontSize: '0.92rem', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
+                Protocol Metrics &amp; Performance
               </h4>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.5' }}>
-                <strong>Layering Principle:</strong> The Frame Check Sequence (CRC or Checksum) protects the logical data
-                (Header + Payload). Framing (bit/byte stuffing) ensures transparency over the physical transmission medium.
-                If framing occurred first, stuffing characters could confuse the FCS or vice versa. The receiver must first
-                deframe (reconstruct wire bytes) and then verify the FCS.
-              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
+                <div className="stat-card">
+                  <div className="stat-label">Total Attempts</div>
+                  <div className="stat-value" style={{ color: 'var(--accent-blue)' }}>
+                    {telemetry.totalAttempts ?? 0}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Delivered</div>
+                  <div className="stat-value" style={{ color: 'var(--accent-emerald)' }}>
+                    {telemetry.delivered ?? telemetry.totalDelivered ?? 0}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Retransmissions</div>
+                  <div className="stat-value" style={{ color: 'var(--accent-amber)' }}>
+                    {telemetry.retransmissions ?? telemetry.totalAborted ?? 0}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Corruptions</div>
+                  <div className="stat-value" style={{ color: 'var(--accent-rose)' }}>
+                    {telemetry.corruptions ?? telemetry.totalCollisions ?? 0}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Duplicates</div>
+                  <div className="stat-value" style={{ color: 'var(--accent-purple)' }}>
+                    {telemetry.duplicates ?? 0}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Utilization</div>
+                  <div className="stat-value" style={{ color: 'var(--accent-cyan)' }}>
+                    {telemetry.channelUtilization ?? telemetry.busUtilization ?? 0}%
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-                Q2: Why does FCS cover both the Header and Payload?
+            {/* Chronological Event Log */}
+            <div>
+              <h4 style={{ fontSize: '0.92rem', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
+                Discrete-Event Timeline Log
               </h4>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.5' }}>
-                <strong>Integrity Coverage:</strong> If a bit flips in the sequence number (e.g., from seq=0 to seq=1)
-                and FCS only covered the payload, the receiver would accept a corrupted sequence number, misalign its sliding
-                window, and potentially deliver duplicate or out-of-order packets. Protecting the serialized header prevents
-                undetected protocol desynchronization.
-              </p>
-            </div>
-
-            <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-                Q3: Difference between Point-to-Point ARQ and CSMA/CD?
-              </h4>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.5' }}>
-                <strong>Topology &amp; Layer Scope:</strong> Sliding window ARQ (Stop-and-Wait, GBN, SR) provides reliable
-                flow control over a dedicated point-to-point link using acknowledgements and timers. CSMA/CD is a MAC sublayer
-                protocol for shared-medium broadcast buses (Ethernet IEEE 802.3) that handles contention, collision detection (2τ),
-                and backoff without sliding-window end-to-end ACKs.
-              </p>
-            </div>
-
-            <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-                Q4: How is duplicate payload delivery prevented when an ACK is lost?
-              </h4>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.5' }}>
-                <strong>Sequence Memory:</strong> When the receiver successfully delivers frame #0, it increments its expected
-                sequence number to #1 and transmits ACK(1). If that ACK is lost, the sender times out and re-sends frame #0.
-                The receiver compares the received seq (0) against expected (1), detects a duplicate, discards the payload,
-                and re-transmits ACK(1) so the sender can advance.
-              </p>
-            </div>
-
-            <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-                Q5: Why must frame transmission duration $T_t \ge 2\tau$ in CSMA/CD?
-              </h4>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.5' }}>
-                <strong>Vulnerability Window:</strong> In the worst-case scenario, a collision occurs just before the signal
-                reaches the farthest station at $t = \tau - \epsilon$. The collision wavefront takes another $\tau$ to travel
-                back to the sender. If the sender finishes transmitting before $2\tau$, it would falsely assume successful transmission
-                and miss detecting the collision while transmitting.
-              </p>
-            </div>
-
-            <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-                Q6: What is the Desynchronization Problem in Character Count Framing?
-              </h4>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.5' }}>
-                <strong>Header Cascading Error:</strong> Character count framing relies on a single length byte to locate
-                the boundary of the next frame. If that length byte is corrupted, the receiver misinterprets normal payload bytes
-                as the length header of subsequent frames, causing catastrophic cascading framing loss until a resynchronization
-                mechanism or connection reset occurs.
-              </p>
+              <div className="trace-log-container" style={{ maxHeight: '240px' }}>
+                {stageHistory.slice(-20).reverse().map((entry) => (
+                  <div key={entry.id} className="trace-row">
+                    <span className="trace-tick">t={entry.tick}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', minWidth: '90px' }}>
+                      {entry.type}:
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)', flex: 1, fontSize: '0.78rem' }}>
+                      {entry.eventType || entry.title || entry.description || `Frame #${entry.frameId ?? entry.seq ?? ''}`}
+                    </span>
+                    {entry.corrupted && <span className="badge badge-danger">CORRUPT</span>}
+                  </div>
+                ))}
+                {stageHistory.length === 0 && (
+                  <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1.5rem' }}>
+                    No events recorded yet.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

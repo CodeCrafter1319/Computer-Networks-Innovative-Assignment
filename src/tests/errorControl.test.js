@@ -612,7 +612,7 @@ describe('ErrorControlView Component Rendering Smoke Test', () => {
       expect(html).toContain('Cyclic Redundancy Check');
       expect(html).toContain('16-bit Internet Checksum');
       expect(html).toContain('Two-Dimensional Matrix Parity');
-      expect(html).toContain('A burst error of length');
+      expect(html).toContain('One-Dimensional Parity');
     }).not.toThrow();
   });
 

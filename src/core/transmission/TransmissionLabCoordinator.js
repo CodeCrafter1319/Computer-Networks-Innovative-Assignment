@@ -1517,6 +1517,20 @@ export class TransmissionLabCoordinator {
         goodput,
         deliveredMessages: [...this.deliveredMessages],
         inFlight: this.forwardChannel ? this.forwardChannel.getHistory().filter(h => h.outcome === TransmissionOutcome.DELIVERED) : [],
+        forwardHistory: this.forwardChannel ? this.forwardChannel.getHistory() : [],
+        reverseHistory: this.reverseChannel ? this.reverseChannel.getHistory() : [],
+        senderState: this.protocolInstance ? {
+          status: this.protocolInstance.status,
+          base: this.protocolInstance.base ?? 0,
+          nextSeq: this.protocolInstance.nextSeq ?? 0,
+          windowSize: this.config.windowSize,
+          expectedAck: this.protocolInstance.expectedAck,
+        } : null,
+        receiverState: this.protocolInstance ? {
+          expectedSeq: this.protocolInstance.expectedSeq,
+          receiverBase: this.protocolInstance.receiverBase,
+          receiverBuffer: this.protocolInstance.receiverBuffer ? Array.from(this.protocolInstance.receiverBuffer.keys()) : [],
+        } : null,
         status: this.getStatus(),
         isComplete: this.isComplete(),
       };

@@ -320,7 +320,7 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
       expect(html).toContain('Profile A: Point-to-Point ARQ');
       expect(html).toContain('Profile B: Shared-Medium CSMA/CD');
       expect(html).toContain('Explicit 8-Stage Transmission Lifecycle');
-      expect(html).toContain('Viva Helper');
+      expect(html).toContain('Live Transmission Telemetry');
     });
 
     it('renders App with defaultTab="transmission-lab"', () => {
@@ -353,7 +353,7 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
       const html = renderToString(React.createElement(TransmissionLabView));
       expect(html).toContain('Message Payload');
       expect(html).toContain('form-textarea');
-      expect(html).toContain('How This Simulation Works (Student &amp; Viva Guide)');
+      expect(html).toContain('How This Simulation Works (Student Architecture Guide)');
       expect(html).toContain('Instant / Complete');
       expect(html).toContain('Speed:');
       expect(html).toContain('Slow (300ms)');
