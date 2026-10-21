@@ -46,15 +46,16 @@ The simulator is designed with high academic rigor and viva explainability, prio
 - [x] **Phase 5: Error Control Algorithms & Step-by-Step CRC Visualizer** (`crc.js` with educational modulo-2 division and named variants CRC-8/SMBUS & CRC-16/CCITT-FALSE, `checksum.js` with RFC 1071 16-bit 1's complement, `parity.js` with 1D/2D parity and single-bit localization, `errorInjection.js`, `ErrorControlView.jsx`, and 36 unit tests in `src/tests/errorControl.test.js` passing; 94 tests total across suite)
 - [x] **Phase 6: Flow Control, ARQ Protocols & Sliding Window Visualizer** (`FrameContract.js`, `sequenceMath.js`, `stopAndWait.js`, `goBackN.js`, `selectiveRepeat.js`, `FlowControlSimulator.js`, `FlowControlView.jsx`, audited channel utilization and goodput metrics, and 35 unit tests in `src/tests/flowControl.test.js` passing; 129 tests total across suite)
 - [x] **Phase 7: Medium Access Control — CSMA/CD Simulation** (`SharedBus.js` spatial broadcast medium, `backoff.js` IEEE 802.3 Truncated BEB with attemptLimit = 16, `csmaCd.js` 1-persistent station state machine, `CsmaCdSimulator.js` multi-station contention coordinator, `MacView.jsx` interactive bus visualizer with colliding wavefronts, jam sequence, presets, and Viva Helper panel; 19 unit tests in `src/tests/mac.test.js` passing; 148 tests total across suite)
-- [x] **Phase 8: End-to-End Transmission Lab** (`TransmissionLabCoordinator.js` decoupled integration coordinator, `TransmissionLabView.jsx` interactive pipeline view, Profile A: Point-to-Point ARQ with framing + FCS + duplex channels + fault injection, Profile B: Shared-Medium Ethernet with framing + FCS + CSMA/CD + collision detection + 32-bit jam + BEB, 8-stage lifecycle tracking from segmentation to delivery, live telemetry, and Viva Helper panel; 20 unit tests in `src/tests/transmissionLab.test.js` passing; 168 tests total across suite)
+- [x] **Phase 8: End-to-End Transmission Lab** (`TransmissionLabCoordinator.js` decoupled integration coordinator, `TransmissionLabView.jsx` interactive pipeline view, Profile A: Point-to-Point ARQ with framing + FCS + duplex channels + fault injection, Profile B: Shared-Medium Ethernet with framing + FCS + CSMA/CD + collision detection + 32-bit jam + BEB, 8-stage lifecycle tracking from segmentation to delivery, genuine deframing extraction, out-of-order Selective Repeat reassembly, live telemetry, and Viva Helper panel; 23 unit and integration tests in `src/tests/transmissionLab.test.js` passing; 171 tests total across suite)
+- [x] **Phase 9: Final Hardening, Acceptance Audit & Submission Preparation** (System-wide technical audit, zero regression verification, production build verification, dev server probe HTTP 200, comprehensive documentation: `README.md`, `docs/ARCHITECTURE.md`, `docs/DEMO_GUIDE.md`, `docs/VIVA_GUIDE.md`, `docs/FINAL_AUDIT.md`, and `docs/SUBMISSION_MATERIALS.md`; 171/171 tests passing)
 
 ---
 
-## 5. Known Issues
-- None. All framing algorithms, error-control algorithms, flow-control ARQ protocols, CSMA/CD MAC protocols, and the integrated End-to-End Transmission Lab execute with 100% test pass rate (168/168 tests passing across 7 test suites). Vite production build completes cleanly.
+## 5. Known Issues & Educational Limitations
+- None. All framing algorithms, error-control algorithms, flow-control ARQ protocols, CSMA/CD MAC protocols, and the integrated End-to-End Transmission Lab execute with 100% test pass rate (171/171 tests passing across 7 test suites). Vite production build completes cleanly.
+- Educational limitations (documented in `FINAL_AUDIT.md`): discrete integer virtual ticks rather than continuous analog time; deterministic fault injection matrices rather than stochastic Gaussian noise; Layer 2 scope (excludes TCP/IP routing and physical transceiver analog voltages).
 
 ---
 
-## 6. Exact Next Step
-- **Phase 9: Final Hardening, Edge-Case Audit & Presentation Package**
-  - Final cross-browser verification, presentation readiness, comprehensive README and viva defense cheat sheet.
+## 6. Project Status
+- **ALL PHASES (Phases 1–9) COMPLETE & VERIFIED.** Ready for final university examination and viva voce presentation.
