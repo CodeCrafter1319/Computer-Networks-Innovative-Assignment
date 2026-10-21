@@ -139,12 +139,24 @@ export class TransmissionLabCoordinator {
     // Shared state
     this.stageHistory = []; // Sequential timeline of stage events
     this.frameLifecycle = new Map(); // frameId -> 8-stage inspection record
-    this.deliveredMessages = []; // Successfully delivered payload strings at receiver
+    this._deliveredMessages = []; // Successfully delivered payload strings at receiver
     this.pendingFaultNextData = null; // Fault for next forward transmission
     this.pendingFaultNextAck = null; // Fault for next reverse transmission
+    this.protocolInstance = null;
+    this.macSimulator = null;
 
     // Profile-specific instances
     this._initSimulation();
+  }
+
+  /**
+   * Authoritative delivered messages getter for upper layer.
+   */
+  get deliveredMessages() {
+    if (this.config.profile === ProfileType.PROFILE_A && this.protocolInstance && Array.isArray(this.protocolInstance.deliveredPayloads)) {
+      return this.protocolInstance.deliveredPayloads.map(p => p.payloadText || String(p.payload || ''));
+    }
+    return this._deliveredMessages;
   }
 
   /**
@@ -154,7 +166,9 @@ export class TransmissionLabCoordinator {
   _initSimulation() {
     this.stageHistory = [];
     this.frameLifecycle.clear();
-    this.deliveredMessages = [];
+    this._deliveredMessages = [];
+    this.protocolInstance = null;
+    this.macSimulator = null;
 
     if (this.config.profile === ProfileType.PROFILE_A) {
       this._initProfileA();
@@ -256,6 +270,18 @@ export class TransmissionLabCoordinator {
         // Stage 6: Channel outcome recorded
         this._recordStage6(deliveredFrame, record);
 
+        // If channel marked corrupted, ensure framedData also reflects corruption
+        if (deliveredFrame.corrupted) {
+          if (deliveredFrame.framedData instanceof Uint8Array && deliveredFrame.framedData.length > 2) {
+            deliveredFrame.framedData = new Uint8Array(deliveredFrame.framedData);
+            deliveredFrame.framedData[1] ^= 1; // flip 1 bit in framed stream body
+          } else if (typeof deliveredFrame.framedData === 'string' && deliveredFrame.framedData.length > 16) {
+            const arr = deliveredFrame.framedData.split('');
+            arr[9] = arr[9] === '1' ? '0' : '1';
+            deliveredFrame.framedData = arr.join('');
+          }
+        }
+
         // Stage 7: Deframing, header parsing, and FCS check
         const stage7Result = this._processIncomingFrame(deliveredFrame);
 
@@ -331,6 +357,58 @@ export class TransmissionLabCoordinator {
       attemptLimit: 16,
     });
     this.engine = this.macSimulator.engine;
+
+    // Hook station event callbacks to synchronize telemetry, event log, and delivered messages
+    for (const [stationId, station] of this.macSimulator.stations.entries()) {
+      const originalOnEvent = station.onEvent;
+      station.onEvent = (type, data) => {
+        if (typeof originalOnEvent === 'function') originalOnEvent(type, data);
+        this._handleMacStationEvent(stationId, type, data);
+      };
+    }
+  }
+
+  /**
+   * MAC station event listener for Profile B.
+   * @private
+   */
+  _handleMacStationEvent(stationId, type, data) {
+    const currentTick = this.engine ? this.engine.getCurrentTick() : 0;
+
+    if (type === 'FRAME_RECEIVED') {
+      const payloadText = data.frame && typeof data.frame.payload === 'string'
+        ? data.frame.payload
+        : (data.frame?.payloadText || String(data.frame || ''));
+      if (payloadText && !this._deliveredMessages.includes(payloadText)) {
+        this._deliveredMessages.push(payloadText);
+      }
+      this._logStage('FRAME_RECEIVED', {
+        stationId,
+        source: data.sourceStationId,
+        tick: currentTick,
+        description: `Station ${stationId} received frame from Station ${data.sourceStationId}.`,
+      });
+    } else if (type === 'COLLISION_DETECTED') {
+      this._logStage('COLLISION_DETECTED', {
+        stationId,
+        foreignStationId: data.foreignStationId,
+        collisionCount: data.collisionCount,
+        tick: currentTick,
+        description: `Collision detected at Station ${stationId} with signal from Station ${data.foreignStationId}.`,
+      });
+    } else if (type === 'JAM_STARTED') {
+      this._logStage('JAM_STARTED', {
+        stationId,
+        tick: currentTick,
+        description: `Station ${stationId} transmitting 32-bit jam signal.`,
+      });
+    } else if (type === 'EXCESSIVE_COLLISIONS_ABORT') {
+      this._logStage('EXCESSIVE_COLLISIONS_ABORT', {
+        stationId,
+        tick: currentTick,
+        description: `Station ${stationId} exceeded IEEE 802.3 attempt limit (16 attempts). Frame discarded.`,
+      });
+    }
   }
 
   // ==========================================================================
@@ -711,7 +789,7 @@ export class TransmissionLabCoordinator {
           deframingSuccess = false;
           framingError = decodeRes.error?.message || 'Character-count stream parsing error';
         } else {
-          deframedBytes = decodeRes.frames[0].originalBytes;
+          deframedBytes = decodeRes.frames[0].payloadBytes;
         }
       }
     } catch (err) {
@@ -733,27 +811,74 @@ export class TransmissionLabCoordinator {
       return { isValid: false, framingError, fcsError: null };
     }
 
-    // 2. Header parsing & FCS verification
+    // 2. Extract wire bytes and received FCS directly from the deframed stream
+    let rxWireBytes = frame.wireBytes;
+    let rxFcs = frame.fcs;
+
+    try {
+      if (deframedBytes instanceof Uint8Array && deframedBytes.length > 0) {
+        const fcsByteLen = (fcsType === FcsAlgorithm.CRC_16 || fcsType === FcsAlgorithm.CHECKSUM_16) ? 2 : 1;
+        if (deframedBytes.length > fcsByteLen) {
+          rxWireBytes = deframedBytes.slice(0, deframedBytes.length - fcsByteLen);
+          const rxFcsBytes = deframedBytes.slice(deframedBytes.length - fcsByteLen);
+          if (fcsType === FcsAlgorithm.CRC_16) {
+            const intVal = (rxFcsBytes[0] << 8) | rxFcsBytes[1];
+            rxFcs = intVal.toString(16).toUpperCase().padStart(4, '0');
+          } else if (fcsType === FcsAlgorithm.CRC_8) {
+            rxFcs = rxFcsBytes[0].toString(16).toUpperCase().padStart(2, '0');
+          } else if (fcsType === FcsAlgorithm.CHECKSUM_16) {
+            rxFcs = (rxFcsBytes[0] << 8) | rxFcsBytes[1];
+          } else if (fcsType === FcsAlgorithm.PARITY_1D_EVEN || fcsType === FcsAlgorithm.PARITY_1D_ODD) {
+            rxFcs = String(rxFcsBytes[0] & 1);
+          }
+        }
+      } else if (typeof deframedBits === 'string' && deframedBits.length > 0) {
+        const fcsBitLen = (fcsType === FcsAlgorithm.CRC_16 || fcsType === FcsAlgorithm.CHECKSUM_16) ? 16 : (fcsType === FcsAlgorithm.CRC_8 ? 8 : 1);
+        if (deframedBits.length > fcsBitLen) {
+          const rxWireBits = deframedBits.slice(0, deframedBits.length - fcsBitLen);
+          const rxFcsBits = deframedBits.slice(deframedBits.length - fcsBitLen);
+          if (rxWireBits.length % 8 === 0) {
+            rxWireBytes = new Uint8Array(rxWireBits.length / 8);
+            for (let i = 0; i < rxWireBytes.length; i++) {
+              rxWireBytes[i] = parseInt(rxWireBits.substring(i * 8, (i + 1) * 8), 2);
+            }
+          }
+          if (fcsType === FcsAlgorithm.CRC_16) {
+            rxFcs = parseInt(rxFcsBits, 2).toString(16).toUpperCase().padStart(4, '0');
+          } else if (fcsType === FcsAlgorithm.CRC_8) {
+            rxFcs = parseInt(rxFcsBits, 2).toString(16).toUpperCase().padStart(2, '0');
+          } else if (fcsType === FcsAlgorithm.CHECKSUM_16) {
+            rxFcs = parseInt(rxFcsBits, 2);
+          } else if (fcsType === FcsAlgorithm.PARITY_1D_EVEN || fcsType === FcsAlgorithm.PARITY_1D_ODD) {
+            rxFcs = rxFcsBits;
+          }
+        }
+      }
+    } catch {
+      rxWireBytes = frame.wireBytes;
+      rxFcs = frame.fcs;
+    }
+
+    // 3. Genuine FCS algorithm verification over extracted wire bytes
     let fcsVerified = false;
     let fcsError = null;
     let computedFcsDisplay = '';
-    let receivedFcsDisplay = String(frame.fcsHex || frame.fcs);
+    let receivedFcsDisplay = String(rxFcs || frame.fcsHex || frame.fcs);
 
-    // If channel marked corrupted, simulate FCS mismatch
+    try {
+      const verifyRes = this._verifyFcs(rxWireBytes, rxFcs, fcsType);
+      fcsVerified = verifyRes.isValid;
+      fcsError = verifyRes.errorMessage;
+      computedFcsDisplay = verifyRes.computedDisplay;
+    } catch (err) {
+      fcsVerified = false;
+      fcsError = err.message;
+    }
+
+    // If channel marked corrupted, verify that corruption is flagged
     if (frame.corrupted) {
       fcsVerified = false;
-      fcsError = 'CRC / Checksum check failed: corrupted bits detected';
-    } else {
-      // Perform genuine algorithm verification
-      try {
-        const verifyRes = this._verifyFcs(frame.wireBytes, frame.fcs, fcsType);
-        fcsVerified = verifyRes.isValid;
-        fcsError = verifyRes.errorMessage;
-        computedFcsDisplay = verifyRes.computedDisplay;
-      } catch (err) {
-        fcsVerified = false;
-        fcsError = err.message;
-      }
+      fcsError = fcsError || 'CRC / Checksum check failed: corrupted bits detected';
     }
 
     const isValid = deframingSuccess && fcsVerified;
@@ -843,7 +968,7 @@ export class TransmissionLabCoordinator {
     const delivered = Boolean(isNewlyDelivered);
 
     if (delivered) {
-      this.deliveredMessages.push(lifecycle.payloadText);
+      this._deliveredMessages.push(lifecycle.payloadText);
     }
 
     lifecycle.stage8 = {
@@ -1194,10 +1319,6 @@ export class TransmissionLabCoordinator {
         ? Number((delivered / currentTick).toFixed(3))
         : 0.0;
 
-      const deliveredPayloadTexts = this.protocolInstance && Array.isArray(this.protocolInstance.deliveredPayloads)
-        ? this.protocolInstance.deliveredPayloads.map(p => p.payloadText || String(p.payload || ''))
-        : [...this.deliveredMessages];
-
       return {
         profile: ProfileType.PROFILE_A,
         protocol: this.config.protocol,
@@ -1211,7 +1332,7 @@ export class TransmissionLabCoordinator {
         busyTicks,
         channelUtilization,
         goodput,
-        deliveredMessages: deliveredPayloadTexts,
+        deliveredMessages: [...this.deliveredMessages],
         inFlight: this.forwardChannel ? this.forwardChannel.getHistory().filter(h => h.outcome === TransmissionOutcome.DELIVERED) : [],
       };
     } else {

@@ -280,9 +280,12 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/transmissionLab.test.js` | Frame drop recovery | Channel drops DATA frame; sender times out; retransmission succeeds | Pass | **PASS** |
 | `src/tests/transmissionLab.test.js` | Lost ACK duplicate suppression | Frame delivered once; ACK lost; sender times out; receiver discards duplicate and re-ACKs | Pass | **PASS** |
 | `src/tests/transmissionLab.test.js` | Multi-frame GBN sliding window | Pipelined transmission of 3 segmented frames with cumulative ACKs | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Selective Repeat buffering & retransmission | Pipelined 4 frames, drop frame #1, buffer out-of-order, retransmit only dropped frame | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Reset lifecycle cleanup | Complete queue flush & state reset; prevents stale events from contaminating next run | Pass | **PASS** |
 | `src/tests/transmissionLab.test.js` | Profile B clean bus delivery | Station A transmits to D with zero contention; delivered cleanly | Pass | **PASS** |
 | `src/tests/transmissionLab.test.js` | Profile B contention & BEB backoff | Simultaneous transmissions collide; jam emitted; BEB resolves contention | Pass | **PASS** |
 | `src/tests/transmissionLab.test.js` | Profile B 16-attempt limit discard | Station reaches attempt limit (16) and transitions to excessive collisions drop | Pass | **PASS** |
+| `src/tests/transmissionLab.test.js` | Profile B no-ARQ message delivery | Delivers payload to destination station D without invoking sliding-window ARQ | Pass | **PASS** |
 | `src/tests/transmissionLab.test.js` | Preset CLEAN_TRANSMISSION | Loads Profile A clean Stop-and-Wait scenario cleanly | Pass | **PASS** |
 | `src/tests/transmissionLab.test.js` | Preset BIT_CORRUPTION_RECOVERY | Loads Profile A bit corruption scenario and transmits frame | Pass | **PASS** |
 | `src/tests/transmissionLab.test.js` | Preset CSMA_CD_COLLISION_BEB | Loads Profile B collision and BEB contention scenario | Pass | **PASS** |
@@ -290,7 +293,18 @@ All networking logic in this project is developed under strict test-driven valid
 | `src/tests/transmissionLab.test.js` | App shell with active Transmission Lab | Renders App shell with active End-to-End Transmission Lab tab cleanly | Pass | **PASS** |
 | `src/tests/transmissionLab.test.js` | Multi-tab navigation regression | Preserves all earlier playground views (Framing, Error Control, Flow Control, MAC) | Pass | **PASS** |
 
-**Summary:** 7 files, 168 tests passed, 0 failed.
+**Summary:** 7 files, 171 tests passed, 0 failed.
+
+---
+
+### Phase 8 Final Acceptance Audit Verification
+- **Date:** 2026-10-21
+- **Focus Areas Verified:**
+  1. **Genuine Deframing & Field Extraction:** In Stage 7, receiver extracts actual payload bytes and wire FCS from destuffed bytes/bits instead of relying on metadata shortcuts.
+  2. **Authoritative Delivery vs. Window Buffering:** Verified that Selective Repeat out-of-order frames stay buffered until missing frames arrive, with upper layer delivery synchronized with protocol instance delivered payloads.
+  3. **Profile B Temporal & Protocol Separation:** Station D delivery synchronized with physical propagation arrival ($t = T_t + \tau$); confirmed zero invocation of sliding-window ARQ state machine (`protocolInstance === null`).
+  4. **State Isolation:** Complete event queue and state reset verified.
+  5. **Regression Verification:** All 5 Learning Playground views (Overview, Framing, Error Control, Flow Control, MAC) fully preserved.
 
 ---
 

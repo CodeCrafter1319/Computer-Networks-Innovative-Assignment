@@ -189,6 +189,52 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
       expect(tele.delivered).toBe(3);
       expect(coordinator.deliveredMessages).toEqual(['ABCDE', 'FGHIJ', 'KLMNO']);
     });
+
+    it('transmits with Selective Repeat, buffers out-of-order frames, and selectively retransmits only the dropped frame', () => {
+      coordinator.reset({
+        protocol: FlowProtocol.SELECTIVE_REPEAT,
+        windowSize: 4,
+        rxWindowSize: 4,
+        m: 3,
+        maxPayloadChunk: 2,
+        propagationDelay: 3,
+        timeoutDuration: 14,
+      });
+
+      // Drop frame #1 in transit
+      coordinator.forwardChannel.setFaultPlan([{ action: 'PASS' }, { action: 'DROP' }]);
+
+      coordinator.sendMessage('A1B2C3D4'); // 4 frames: A1, B2, C3, D4
+
+      coordinator.runUntil((c) => c.getTelemetry().delivered === 4, 150);
+
+      const tele = coordinator.getTelemetry();
+      expect(tele.delivered).toBe(4);
+      expect(tele.retransmissions).toBe(1); // Only the single lost frame retransmitted!
+      expect(tele.timeouts).toBe(1);
+      expect(coordinator.deliveredMessages).toEqual(['A1', 'B2', 'C3', 'D4']);
+    });
+
+    it('cleans up completely on reset without stale events contaminating a subsequent run', () => {
+      coordinator.sendMessage('RUN_1');
+      coordinator.stepTicks(3); // In transit
+
+      // Reset mid-transmission
+      coordinator.reset();
+      expect(coordinator.engine.getCurrentTick()).toBe(0);
+      expect(coordinator.engine.getQueue().isEmpty()).toBe(true);
+      expect(coordinator.getAllFrames().length).toBe(0);
+      expect(coordinator.deliveredMessages).toEqual([]);
+
+      // Start completely fresh transmission
+      coordinator.sendMessage('RUN_2');
+      coordinator.runUntil((c) => c.getTelemetry().delivered === 1, 100);
+
+      const tele = coordinator.getTelemetry();
+      expect(tele.delivered).toBe(1);
+      expect(coordinator.deliveredMessages).toEqual(['RUN_2']);
+      expect(coordinator.deliveredMessages).not.toContain('RUN_1');
+    });
   });
 
   describe('Profile B: Shared-Medium Ethernet Teaching Model', () => {
@@ -230,6 +276,20 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
 
       const tele = coordinator.getTelemetry();
       expect(tele.totalExcessiveDrops).toBeGreaterThanOrEqual(1);
+    });
+
+    it('transmits message via sendMessage in Profile B and delivers to destination station D without invoking ARQ', () => {
+      expect(coordinator.protocolInstance).toBeNull(); // ARQ protocol is NOT initialized in Profile B!
+      coordinator.sendMessage('BROADCAST_PAYLOAD');
+
+      coordinator.runUntil((c) => c.deliveredMessages.length > 0, 150);
+
+      const tele = coordinator.getTelemetry();
+      expect(tele.totalDelivered).toBe(1);
+      expect(tele.profile).toBe(ProfileType.PROFILE_B);
+      expect(coordinator.deliveredMessages.length).toBeGreaterThanOrEqual(1);
+      expect(coordinator.deliveredMessages[0]).toContain('BROADCAST');
+      expect(coordinator.protocolInstance).toBeNull(); // Confirmed zero sliding window ARQ
     });
   });
 
