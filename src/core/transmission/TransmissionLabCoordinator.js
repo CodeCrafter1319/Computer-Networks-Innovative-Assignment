@@ -1716,6 +1716,62 @@ export class TransmissionLabCoordinator {
   }
 
   /**
+   * Get live ARQ timeout timer snapshot for sender countdown display.
+   * 
+   * @returns {Object}
+   */
+  getTimerState() {
+    if (this.config.profile === ProfileType.PROFILE_A) {
+      if (this.protocolInstance && typeof this.protocolInstance.getTimerState === 'function') {
+        const rawTimer = this.protocolInstance.getTimerState();
+        let faultContext = null;
+        if (this.forwardChannel) {
+          const fwdHistory = this.forwardChannel.getHistory();
+          const lastFwd = fwdHistory.length > 0 ? fwdHistory[fwdHistory.length - 1] : null;
+          if (lastFwd) {
+            if (lastFwd.outcome === TransmissionOutcome.DROPPED) {
+              faultContext = 'DATA_DROPPED';
+            } else if (lastFwd.outcome === TransmissionOutcome.CORRUPTED || lastFwd.transmittedFrame?.corrupted) {
+              faultContext = 'DATA_CORRUPTED';
+            }
+          }
+        }
+        if (this.reverseChannel) {
+          const revHistory = this.reverseChannel.getHistory();
+          const lastRev = revHistory.length > 0 ? revHistory[revHistory.length - 1] : null;
+          if (lastRev && lastRev.outcome === TransmissionOutcome.DROPPED) {
+            faultContext = 'ACK_DROPPED';
+          }
+        }
+        return {
+          ...rawTimer,
+          faultContext,
+        };
+      }
+      return {
+        protocol: this.config.protocol,
+        active: false,
+        status: 'IDLE',
+        remainingTicks: 0,
+        duration: this.config.timeoutDuration,
+        currentTick: this.engine ? this.engine.getCurrentTick() : 0,
+        timers: [],
+      };
+    } else {
+      return {
+        protocol: 'CSMA_CD',
+        active: false,
+        status: 'NOT_APPLICABLE',
+        remainingTicks: 0,
+        duration: 0,
+        currentTick: this.engine ? this.engine.getCurrentTick() : 0,
+        message: 'Profile B uses CSMA/CD Ethernet MAC bus arbitration (no sliding-window ARQ timer).',
+        timers: [],
+      };
+    }
+  }
+
+  /**
    * Get comprehensive telemetry and performance metrics.
    * 
    * @returns {Object}
@@ -1770,6 +1826,7 @@ export class TransmissionLabCoordinator {
           receiverBase: this.protocolInstance.receiverBase,
           receiverBuffer: this.protocolInstance.receiverBuffer ? Array.from(this.protocolInstance.receiverBuffer.keys()) : [],
         } : null,
+        timerState: this.getTimerState(),
         status: this.getStatus(),
         isComplete: this.isComplete(),
       };
@@ -1780,6 +1837,7 @@ export class TransmissionLabCoordinator {
         currentTick,
         ...macTelemetry,
         deliveredMessages: [...this.deliveredMessages],
+        timerState: this.getTimerState(),
         status: this.getStatus(),
         isComplete: this.isComplete(),
       };

@@ -49,6 +49,13 @@ export class StopAndWaitARQ {
     this.status = SenderStatus.IDLE;
     this.currentFrame = null;
     this.timerEventId = null;
+    this.timerDeadline = null;
+    this.timerDuration = this.timeoutDuration;
+    this.timerFrameSeq = null;
+    this.timerFrameId = null;
+    this.timerAttempt = 1;
+    this.timerStatus = 'IDLE';
+    this.lastTimerEvent = null;
 
     // Receiver State
     this.expectedSeq = 0; // Next seq expected: 0 or 1
@@ -122,6 +129,19 @@ export class StopAndWaitARQ {
     if (this.timerEventId !== null) {
       this.engine.getQueue().cancel(this.timerEventId);
       this.timerEventId = null;
+      const currentTick = this.engine.getCurrentTick();
+      if (this.timerStatus === 'WAITING_FOR_ACK') {
+        this.timerStatus = 'ACK_RECEIVED';
+        this.lastTimerEvent = {
+          type: 'ACK_RECEIVED',
+          tick: currentTick,
+          seq: this.timerFrameSeq,
+          frameId: this.timerFrameId,
+          attempt: this.timerAttempt,
+          message: `ACK received at t=${currentTick}. Timer cancelled.`,
+        };
+      }
+      this.timerDeadline = null;
     }
   }
 
@@ -131,7 +151,27 @@ export class StopAndWaitARQ {
    */
   _startTimer() {
     this._stopTimer();
+    const currentTick = this.engine.getCurrentTick();
     const frameSeq = this.currentFrame ? this.currentFrame.seq : this.senderSeq;
+    const frameId = this.currentFrame ? this.currentFrame.id : null;
+    const attempt = this.currentFrame ? (this.currentFrame.attempt || 1) : 1;
+
+    this.timerDeadline = currentTick + this.timeoutDuration;
+    this.timerDuration = this.timeoutDuration;
+    this.timerFrameSeq = frameSeq;
+    this.timerFrameId = frameId;
+    this.timerAttempt = attempt;
+    this.timerStatus = 'WAITING_FOR_ACK';
+    this.lastTimerEvent = {
+      type: 'STARTED',
+      tick: currentTick,
+      seq: frameSeq,
+      frameId,
+      attempt,
+      deadlineTick: this.timerDeadline,
+      message: `Timer started for DATA #${frameSeq} (attempt #${attempt}). Deadline: t=${this.timerDeadline}`,
+    };
+
     this.timerEventId = this.engine.scheduleRelative(
       this.timeoutDuration,
       () => {
@@ -139,7 +179,7 @@ export class StopAndWaitARQ {
       },
       {
         type: 'TIMEOUT',
-        payload: { seq: frameSeq },
+        payload: { seq: frameSeq, frameId, attempt },
       }
     );
   }
@@ -150,21 +190,34 @@ export class StopAndWaitARQ {
    */
   _handleTimeout() {
     this.timerEventId = null;
+    this.timerDeadline = null;
     if (this.status !== SenderStatus.WAITING_FOR_ACK || !this.currentFrame) {
+      this.timerStatus = 'IDLE';
       return;
     }
+
+    const currentTick = this.engine.getCurrentTick();
+    this.timerStatus = 'TIMEOUT';
+    this.lastTimerEvent = {
+      type: 'TIMEOUT',
+      tick: currentTick,
+      seq: this.currentFrame.seq,
+      frameId: this.currentFrame.id,
+      attempt: this.currentFrame.attempt,
+      message: `TIMEOUT at t=${currentTick}! ACK not received. Retransmitting DATA #${this.currentFrame.seq}.`,
+    };
 
     this.stats.timeouts++;
     this.stats.retransmissions++;
     this.stats.totalTransmissions++;
 
     this.currentFrame.attempt++;
-    this.currentFrame.sentTick = this.engine.getCurrentTick();
+    this.currentFrame.sentTick = currentTick;
 
     this._emitEvent('TIMEOUT', {
       seq: this.currentFrame.seq,
       attempt: this.currentFrame.attempt,
-      tick: this.engine.getCurrentTick(),
+      tick: currentTick,
     });
 
     // Reschedule timer for this retransmission
@@ -179,7 +232,7 @@ export class StopAndWaitARQ {
       frame: this.currentFrame,
       attempt: this.currentFrame.attempt,
       retransmission: true,
-      tick: this.engine.getCurrentTick(),
+      tick: currentTick,
     });
   }
 
@@ -319,6 +372,44 @@ export class StopAndWaitARQ {
   }
 
   /**
+   * Get immutable snapshot of current retransmission timer countdown state.
+   * 
+   * @returns {Object}
+   */
+  getTimerState() {
+    const currentTick = this.engine.getCurrentTick();
+    const hasActiveTimer = this.timerEventId !== null && this.timerDeadline !== null;
+    const remainingTicks = hasActiveTimer ? Math.max(0, this.timerDeadline - currentTick) : 0;
+
+    return {
+      protocol: 'SW',
+      active: hasActiveTimer,
+      status: hasActiveTimer ? 'WAITING_FOR_ACK' : this.timerStatus,
+      frameSeq: this.timerFrameSeq,
+      frameId: this.timerFrameId,
+      attempt: this.timerAttempt,
+      duration: this.timeoutDuration,
+      deadlineTick: this.timerDeadline,
+      remainingTicks,
+      currentTick,
+      lastEvent: this.lastTimerEvent,
+      timers: hasActiveTimer
+        ? [
+            {
+              frameSeq: this.timerFrameSeq,
+              frameId: this.timerFrameId,
+              attempt: this.timerAttempt,
+              duration: this.timeoutDuration,
+              deadlineTick: this.timerDeadline,
+              remainingTicks,
+              status: 'WAITING_FOR_ACK',
+            },
+          ]
+        : [],
+    };
+  }
+
+  /**
    * Get an immutable snapshot of current protocol state.
    * 
    * @returns {Object}
@@ -344,6 +435,7 @@ export class StopAndWaitARQ {
         deliveredPayloads: [...this.deliveredPayloads],
       },
       stats: { ...this.stats },
+      timerState: this.getTimerState(),
     };
   }
 }

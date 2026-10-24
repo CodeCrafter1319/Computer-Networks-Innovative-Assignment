@@ -505,6 +505,26 @@ export class FlowControlSimulator {
   }
 
   /**
+   * Get live ARQ timeout timer snapshot for sender countdown display.
+   * 
+   * @returns {Object}
+   */
+  getTimerState() {
+    if (this.protocolInstance && typeof this.protocolInstance.getTimerState === 'function') {
+      return this.protocolInstance.getTimerState();
+    }
+    return {
+      protocol: this.config.protocol,
+      active: false,
+      status: 'IDLE',
+      remainingTicks: 0,
+      duration: this.config.timeoutDuration,
+      currentTick: this.engine ? this.engine.getCurrentTick() : 0,
+      timers: [],
+    };
+  }
+
+  /**
    * Get an immutable, complete snapshot of simulator state for UI rendering.
    * 
    * @returns {Object}
@@ -515,6 +535,7 @@ export class FlowControlSimulator {
       config: { ...this.config },
       virtualTick: this.engine.getCurrentTick(),
       protocolState: this.protocolInstance.getState(),
+      timerState: this.getTimerState(),
       inFlightFrames: this.getInFlightFrames(),
       eventLogs: [...this.eventLogs],
       metrics: this.getTheoreticalMetrics(),

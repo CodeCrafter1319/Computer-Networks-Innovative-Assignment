@@ -27,6 +27,7 @@ import FlowControlView from '../ui/modules/FlowControlView.jsx';
 import FramingView from '../ui/modules/FramingView.jsx';
 import ErrorControlView from '../ui/modules/ErrorControlView.jsx';
 import App from '../ui/App.jsx';
+import ArqTimeoutPanel from '../ui/components/ArqTimeoutPanel.jsx';
 
 describe('Sequence Math & Window Limits', () => {
   it('correctly calculates modulo for positive and negative values', () => {
@@ -860,5 +861,327 @@ describe('FlowControlView Component Rendering Smoke Test', () => {
     expect(html).toContain(' LAB 202');
     expect(html).toContain('6');
     expect(html).toContain('WAITING');
+  });
+
+  describe('Live ARQ Timeout Countdown and Retransmission Visualization', () => {
+    it('starts timeout countdown on DATA send and calculates remaining ticks correctly from virtual clock', () => {
+      const sim = new FlowControlSimulator({
+        protocol: FlowControlProtocol.STOP_AND_WAIT,
+        timeoutDuration: 14,
+        propagationDelay: 4,
+        transmissionDelay: 1,
+      });
+
+      // Before send
+      let timerState = sim.getTimerState();
+      expect(timerState.active).toBe(false);
+      expect(timerState.remainingTicks).toBe(0);
+
+      // Send Frame 0 at t=0
+      sim.send('Frame 0');
+      timerState = sim.getTimerState();
+      expect(timerState.active).toBe(true);
+      expect(timerState.status).toBe('WAITING_FOR_ACK');
+      expect(timerState.deadlineTick).toBe(14);
+      expect(timerState.duration).toBe(14);
+      expect(timerState.remainingTicks).toBe(14);
+      expect(timerState.frameSeq).toBe(0);
+      expect(timerState.attempt).toBe(1);
+
+      // Step virtual clock to t=3 (3 ticks elapsed)
+      sim.stepTicks(3);
+      timerState = sim.getTimerState();
+      expect(sim.engine.getCurrentTick()).toBe(3);
+      expect(timerState.active).toBe(true);
+      expect(timerState.remainingTicks).toBe(11); // 14 - 3 = 11
+
+      // Step virtual clock to t=8 (5 more ticks elapsed)
+      sim.stepTicks(5);
+      timerState = sim.getTimerState();
+      expect(sim.engine.getCurrentTick()).toBe(8);
+      expect(timerState.active).toBe(true);
+      expect(timerState.remainingTicks).toBe(6); // 14 - 8 = 6
+    });
+
+    it('freezes countdown while simulation is paused without decreasing virtual time', () => {
+      const sim = new FlowControlSimulator({
+        protocol: FlowControlProtocol.STOP_AND_WAIT,
+        timeoutDuration: 14,
+      });
+      sim.send('Pause Test');
+      sim.stepTicks(4); // t=4, remaining=10
+
+      const frozenVal1 = sim.getTimerState().remainingTicks;
+      expect(frozenVal1).toBe(10);
+
+      // Virtual clock does not advance
+      const frozenVal2 = sim.getTimerState().remainingTicks;
+      expect(frozenVal2).toBe(10);
+      expect(sim.getTimerState().currentTick).toBe(4);
+    });
+
+    it('cancels timer upon receipt of valid ACK', () => {
+      const sim = new FlowControlSimulator({
+        protocol: FlowControlProtocol.STOP_AND_WAIT,
+        timeoutDuration: 14,
+        propagationDelay: 4,
+        transmissionDelay: 1,
+      });
+
+      sim.send('Ack Cancel Test');
+      expect(sim.getTimerState().active).toBe(true);
+
+      // t=0: DATA sent. t=5: DATA arrives at receiver, ACK emitted. t=9: ACK arrives at sender.
+      sim.stepTicks(9);
+      expect(sim.engine.getCurrentTick()).toBe(9);
+
+      const timerState = sim.getTimerState();
+      expect(timerState.active).toBe(false);
+      expect(timerState.status).toBe('ACK_RECEIVED');
+      expect(timerState.remainingTicks).toBe(0);
+      expect(timerState.lastEvent?.type).toBe('ACK_RECEIVED');
+    });
+
+    it('expires at exact deadline and initiates retransmission on Corrupt DATA', () => {
+      const sim = new FlowControlSimulator({
+        protocol: FlowControlProtocol.STOP_AND_WAIT,
+        timeoutDuration: 12,
+        propagationDelay: 3,
+        transmissionDelay: 1,
+      });
+
+      // Inject bit corruption on forward channel
+      sim.forwardChannel.setFaultPlan([{ transmissionIndex: 1, action: 'CORRUPT' }]);
+      sim.send('Corrupt Test');
+
+      // t=0: sent, timer starts with deadline t=12
+      expect(sim.getTimerState().deadlineTick).toBe(12);
+
+      // t=4: arrives at receiver with corruption. Discarded silently. No ACK sent.
+      sim.stepTicks(4);
+      expect(sim.protocolInstance.stats.corruptedReceived).toBe(1);
+      expect(sim.protocolInstance.stats.acksSent).toBe(0);
+      expect(sim.getTimerState().active).toBe(true);
+      expect(sim.getTimerState().remainingTicks).toBe(8); // 12 - 4 = 8
+
+      // Step to t=12 (exact timeout deadline)
+      sim.stepTicks(8);
+      expect(sim.engine.getCurrentTick()).toBe(12);
+
+      // Timeout occurred, attempt incremented to 2, new timeout deadline at t=24
+      const timerState = sim.getTimerState();
+      expect(sim.protocolInstance.stats.timeouts).toBe(1);
+      expect(sim.protocolInstance.stats.retransmissions).toBe(1);
+      expect(timerState.active).toBe(true);
+      expect(timerState.attempt).toBe(2);
+      expect(timerState.deadlineTick).toBe(24);
+      expect(timerState.remainingTicks).toBe(12);
+
+      // Run to full completion: retransmission arrives cleanly and is ACKed
+      sim.runToCompletion(100);
+      expect(sim.isComplete()).toBe(true);
+      expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
+      expect(sim.getTimerState().active).toBe(false);
+    });
+
+    it('handles Dropped DATA with timeout and retransmission', () => {
+      const sim = new FlowControlSimulator({
+        protocol: FlowControlProtocol.STOP_AND_WAIT,
+        timeoutDuration: 10,
+        propagationDelay: 3,
+        transmissionDelay: 1,
+      });
+
+      // Drop DATA in channel
+      sim.forwardChannel.setFaultPlan([{ transmissionIndex: 1, action: 'DROP' }]);
+      sim.send('Drop DATA Test');
+
+      expect(sim.getTimerState().deadlineTick).toBe(10);
+
+      // Step to t=10
+      sim.stepTicks(10);
+      expect(sim.engine.getCurrentTick()).toBe(10);
+      expect(sim.protocolInstance.stats.timeouts).toBe(1);
+      expect(sim.protocolInstance.stats.retransmissions).toBe(1);
+      expect(sim.protocolInstance.stats.framesDelivered).toBe(0);
+
+      // Run to completion: retransmission delivers successfully
+      sim.runToCompletion(100);
+      expect(sim.isComplete()).toBe(true);
+      expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
+    });
+
+    it('handles Dropped ACK with sender timeout, duplicate DATA, and duplicate suppression', () => {
+      const sim = new FlowControlSimulator({
+        protocol: FlowControlProtocol.STOP_AND_WAIT,
+        timeoutDuration: 12,
+        propagationDelay: 3,
+        transmissionDelay: 1,
+      });
+
+      // Drop first reverse ACK
+      sim.reverseChannel.setFaultPlan([{ transmissionIndex: 1, action: 'DROP' }]);
+      sim.send('Drop ACK Test');
+
+      // t=4: DATA delivered, ACK 1 emitted on reverse channel.
+      sim.stepTicks(4);
+      expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
+      expect(sim.protocolInstance.stats.acksSent).toBe(1);
+
+      // Step to t=12: ACK was dropped, sender times out
+      sim.stepTicks(8);
+      expect(sim.engine.getCurrentTick()).toBe(12);
+      expect(sim.protocolInstance.stats.timeouts).toBe(1);
+
+      // Retransmission occurs with attempt 2
+      expect(sim.getTimerState().attempt).toBe(2);
+
+      // Run to completion: receiver suppresses duplicate, sends ACK again, sender accepts
+      sim.runToCompletion(100);
+      expect(sim.isComplete()).toBe(true);
+      expect(sim.protocolInstance.stats.duplicatesDiscarded).toBe(1);
+      expect(sim.protocolInstance.stats.framesDelivered).toBe(1);
+      expect(sim.getTimerState().active).toBe(false);
+    });
+
+    it('Go-Back-N tracks oldest unacknowledged frame timer and retransmits entire window on timeout', () => {
+      const sim = new FlowControlSimulator({
+        protocol: FlowControlProtocol.GO_BACK_N,
+        m: 3,
+        windowSize: 4,
+        timeoutDuration: 16,
+        propagationDelay: 5,
+        transmissionDelay: 1,
+      });
+
+      // Drop first DATA frame
+      sim.forwardChannel.setFaultPlan([{ transmissionIndex: 1, action: 'DROP' }]);
+      sim.send('GBN-0');
+      sim.send('GBN-1');
+      sim.send('GBN-2');
+
+      const timerState = sim.getTimerState();
+      expect(timerState.active).toBe(true);
+      expect(timerState.base).toBe(0);
+      expect(timerState.duration).toBe(16);
+      expect(timerState.deadlineTick).toBe(16);
+
+      // Step to t=16
+      sim.stepTicks(16);
+      expect(sim.protocolInstance.stats.timeouts).toBe(1);
+      // All 3 frames retransmitted
+      expect(sim.protocolInstance.stats.retransmissions).toBe(3);
+
+      sim.runToCompletion(150);
+      expect(sim.isComplete()).toBe(true);
+      expect(sim.protocolInstance.stats.framesDelivered).toBe(3);
+    });
+
+    it('Selective Repeat tracks independent per-frame timers and selectively retransmits only expired frame', () => {
+      const sim = new FlowControlSimulator({
+        protocol: FlowControlProtocol.SELECTIVE_REPEAT,
+        m: 3,
+        windowSize: 4,
+        timeoutDuration: 16,
+        propagationDelay: 4,
+        transmissionDelay: 1,
+      });
+
+      // Drop frame 0, deliver frame 1
+      sim.forwardChannel.setFaultPlan([{ transmissionIndex: 1, action: 'DROP' }]);
+      sim.send('SR-0');
+      sim.send('SR-1');
+
+      let timerState = sim.getTimerState();
+      expect(timerState.active).toBe(true);
+      expect(timerState.timers.length).toBe(2);
+      expect(timerState.timers[0].frameSeq).toBe(0);
+      expect(timerState.timers[1].frameSeq).toBe(1);
+
+      // Step until frame 1 is delivered and ACKed (t=10)
+      sim.stepTicks(10);
+      timerState = sim.getTimerState();
+      // Frame 1 ACKed (timer cancelled), only frame 0 has active timer
+      expect(timerState.timers.length).toBe(1);
+      expect(timerState.timers[0].frameSeq).toBe(0);
+
+      // Step to t=16: Frame 0 timer expires and retransmits ONLY frame 0
+      sim.stepTicks(6);
+      expect(sim.protocolInstance.stats.timeouts).toBe(1);
+      expect(sim.protocolInstance.stats.retransmissions).toBe(1); // ONLY 1 retransmission, not the whole window!
+
+      sim.runToCompletion(150);
+      expect(sim.isComplete()).toBe(true);
+      expect(sim.protocolInstance.stats.framesDelivered).toBe(2);
+    });
+
+    it('renders ArqTimeoutPanel component across active, expired, cancelled, and idle states', () => {
+      // 1. Idle state
+      const idleHtml = renderToString(React.createElement(ArqTimeoutPanel, {
+        timerState: { active: false, status: 'IDLE' },
+        timeoutDuration: 14,
+        currentTick: 0,
+      }));
+      expect(idleHtml).toContain('ARQ Retransmission Countdown');
+      expect(idleHtml).toContain('No active timeout timer');
+
+      // 2. Active countdown state
+      const activeHtml = renderToString(React.createElement(ArqTimeoutPanel, {
+        timerState: {
+          active: true,
+          status: 'WAITING_FOR_ACK',
+          frameSeq: 2,
+          attempt: 1,
+          duration: 14,
+          deadlineTick: 14,
+          remainingTicks: 9,
+        },
+        timeoutDuration: 14,
+        currentTick: 5,
+        protocol: 'SW',
+      }));
+      expect(activeHtml).toContain('Waiting for ACK');
+      expect(activeHtml).toContain('DATA #2');
+      expect(activeHtml).toContain('9');
+      expect(activeHtml).toContain('ticks');
+
+      // 3. Expired state
+      const expiredHtml = renderToString(React.createElement(ArqTimeoutPanel, {
+        timerState: {
+          active: false,
+          status: 'TIMEOUT',
+          lastEvent: { type: 'TIMEOUT', seq: 0 },
+        },
+        timeoutDuration: 14,
+        currentTick: 14,
+      }));
+      expect(expiredHtml).toContain('Timeout Expired');
+
+      // 4. Cancelled state
+      const cancelledHtml = renderToString(React.createElement(ArqTimeoutPanel, {
+        timerState: {
+          active: false,
+          status: 'ACK_RECEIVED',
+          lastEvent: { type: 'ACK_RECEIVED' },
+        },
+        timeoutDuration: 14,
+        currentTick: 9,
+      }));
+      expect(cancelledHtml).toContain('ACK Received — Timer Stopped');
+
+      // 5. CSMA/CD Profile B state
+      const csmaHtml = renderToString(React.createElement(ArqTimeoutPanel, {
+        protocol: 'CSMA_CD',
+        timerState: { protocol: 'CSMA_CD', active: false },
+      }));
+      expect(csmaHtml).toContain('CSMA/CD');
+      expect(csmaHtml).toContain('Shared Medium');
+    });
+
+    it('renders live ARQ timeout countdown in FlowControlView', () => {
+      const html = renderToString(React.createElement(FlowControlView));
+      expect(html).toContain('ARQ Retransmission Countdown');
+      expect(html).toContain('No active timeout timer');
+    });
   });
 });

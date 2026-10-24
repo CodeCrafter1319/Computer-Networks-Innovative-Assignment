@@ -64,6 +64,8 @@ export class SelectiveRepeatARQ {
     this.base = 0;       // Sf: sequence number of oldest unacknowledged frame
     this.nextSeq = 0;    // Sn: sequence number to assign next
     this.buffer = new Map(); // seq -> { frame, acked: boolean, timerEventId: number|null, sentTick: number }
+    this.lastTimerStatus = 'IDLE';
+    this.lastTimerEvent = null;
 
     // Receiver State
     this.rxBase = 0;     // Rf: sequence number of lowest unreceived frame
@@ -126,6 +128,7 @@ export class SelectiveRepeatARQ {
     });
 
     // Schedule independent timer for this specific sequence number
+    const deadlineTick = currentTick + this.timeoutDuration;
     const timerEventId = this.engine.scheduleRelative(
       this.timeoutDuration,
       () => {
@@ -137,11 +140,24 @@ export class SelectiveRepeatARQ {
       }
     );
 
+    this.lastTimerStatus = 'WAITING_FOR_ACK';
+    this.lastTimerEvent = {
+      type: 'STARTED',
+      tick: currentTick,
+      seq,
+      frameId: frame.id,
+      attempt: 1,
+      deadlineTick,
+      message: `Timer started for frame #${seq} (attempt #1). Deadline: t=${deadlineTick}`,
+    };
+
     this.buffer.set(seq, {
       frame,
       acked: false,
       timerEventId,
       sentTick: currentTick,
+      timerDeadline: deadlineTick,
+      duration: this.timeoutDuration,
     });
 
     // Advance nextSeq
@@ -184,6 +200,16 @@ export class SelectiveRepeatARQ {
     entry.frame.attempt++;
     entry.frame.sentTick = currentTick;
 
+    this.lastTimerStatus = 'TIMEOUT';
+    this.lastTimerEvent = {
+      type: 'TIMEOUT',
+      tick: currentTick,
+      seq,
+      frameId: entry.frame.id,
+      attempt: entry.frame.attempt,
+      message: `TIMEOUT at t=${currentTick} for frame #${seq}! Retransmitting selectively.`,
+    };
+
     this._emitEvent('TIMEOUT', {
       seq,
       attempt: entry.frame.attempt,
@@ -191,6 +217,9 @@ export class SelectiveRepeatARQ {
     });
 
     // Reschedule individual timer for this frame
+    const nextDeadline = currentTick + this.timeoutDuration;
+    entry.timerDeadline = nextDeadline;
+    entry.duration = this.timeoutDuration;
     entry.timerEventId = this.engine.scheduleRelative(
       this.timeoutDuration,
       () => {
@@ -377,6 +406,16 @@ export class SelectiveRepeatARQ {
           this.engine.getQueue().cancel(entry.timerEventId);
           entry.timerEventId = null;
         }
+        entry.timerDeadline = null;
+
+        this.lastTimerStatus = 'ACK_RECEIVED';
+        this.lastTimerEvent = {
+          type: 'ACK_RECEIVED',
+          tick: currentTick,
+          seq: ackedSeq,
+          frameId: entry.frame?.id ?? null,
+          message: `ACK for frame #${ackedSeq} received at t=${currentTick}. Timer cancelled.`,
+        };
 
         this._emitEvent('ACK_RECEIVED', {
           ackFrame,
@@ -421,6 +460,50 @@ export class SelectiveRepeatARQ {
         console.error('Error in onEvent callback:', err);
       }
     }
+  }
+
+  /**
+   * Get immutable snapshot of current retransmission timer countdown state.
+   * 
+   * @returns {Object}
+   */
+  getTimerState() {
+    const currentTick = this.engine.getCurrentTick();
+    const activeTimers = [];
+
+    for (const [seq, entry] of this.buffer.entries()) {
+      if (!entry.acked && entry.timerEventId !== null && entry.timerDeadline !== null) {
+        const remainingTicks = Math.max(0, entry.timerDeadline - currentTick);
+        activeTimers.push({
+          frameSeq: seq,
+          frameId: entry.frame?.id ?? null,
+          attempt: entry.frame?.attempt ?? 1,
+          duration: entry.duration || this.timeoutDuration,
+          deadlineTick: entry.timerDeadline,
+          remainingTicks,
+          status: 'WAITING_FOR_ACK',
+        });
+      }
+    }
+
+    activeTimers.sort((a, b) => a.deadlineTick - b.deadlineTick);
+    const hasActive = activeTimers.length > 0;
+    const primary = hasActive ? activeTimers[0] : null;
+
+    return {
+      protocol: 'SR',
+      active: hasActive,
+      status: hasActive ? 'WAITING_FOR_ACK' : (this.lastTimerStatus || 'IDLE'),
+      frameSeq: primary ? primary.frameSeq : null,
+      frameId: primary ? primary.frameId : null,
+      attempt: primary ? primary.attempt : 1,
+      duration: primary ? primary.duration : this.timeoutDuration,
+      deadlineTick: primary ? primary.deadlineTick : null,
+      remainingTicks: primary ? primary.remainingTicks : 0,
+      currentTick,
+      lastEvent: this.lastTimerEvent || null,
+      timers: activeTimers,
+    };
   }
 
   /**
@@ -475,6 +558,7 @@ export class SelectiveRepeatARQ {
         deliveredPayloads: [...this.deliveredPayloads],
       },
       stats: { ...this.stats },
+      timerState: this.getTimerState(),
     };
   }
 }

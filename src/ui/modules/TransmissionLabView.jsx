@@ -21,6 +21,7 @@ import {
   FlowProtocol,
   LabPreset,
 } from '../../core/transmission/TransmissionLabCoordinator.js';
+import ArqTimeoutPanel from '../components/ArqTimeoutPanel.jsx';
 
 export default function TransmissionLabView({ initialProfile = ProfileType.PROFILE_A, coordinator = null } = {}) {
   // Profile Selection: Profile A (Point-to-Point ARQ) vs Profile B (Shared-Medium CSMA/CD)
@@ -986,6 +987,14 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
         <span className="narration-text">{liveNarration.text}</span>
       </div>
 
+      {/* Live ARQ Retransmission Timeout Countdown */}
+      <ArqTimeoutPanel
+        timerState={telemetry.timerState}
+        timeoutDuration={timeoutDuration}
+        protocol={protocol}
+        currentTick={telemetry.currentTick}
+      />
+
       {/* 6. DOMINANT VISUAL SIMULATION CANVAS */}
       <div className="dominant-canvas-card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
@@ -1032,7 +1041,11 @@ export default function TransmissionLabView({ initialProfile = ProfileType.PROFI
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-muted)' }}>Timeout Timer: </span>
-                    <strong style={{ fontFamily: 'var(--font-mono)' }}>{timeoutDuration} ticks</strong>
+                    <strong style={{ fontFamily: 'var(--font-mono)' }}>
+                      {telemetry.timerState?.active
+                        ? `${telemetry.timerState.remainingTicks}t remaining`
+                        : `${timeoutDuration} ticks (Idle)`}
+                    </strong>
                   </div>
                 </div>
               </div>

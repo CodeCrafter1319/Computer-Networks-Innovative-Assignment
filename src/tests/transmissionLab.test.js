@@ -709,5 +709,51 @@ describe('TransmissionLabCoordinator — Architecture & 8-Stage Transmission Pip
       expect(postHtml).toContain('ACKNOWLEDGED');
       expect(postHtml).toContain('NETWORKS LAB 2026');
     });
+
+    it('tracks ARQ timeout countdown across Profile A transmission cycle and updates live in getTelemetry()', () => {
+      coordinator.reset({
+        profile: ProfileType.PROFILE_A,
+        protocol: FlowProtocol.STOP_AND_WAIT,
+        timeoutDuration: 16,
+        propagationDelay: 4,
+      });
+
+      expect(coordinator.getTimerState().active).toBe(false);
+
+      coordinator.sendMessage('HELLO TIMEOUT');
+      let timer = coordinator.getTimerState();
+      expect(timer.active).toBe(true);
+      expect(timer.deadlineTick).toBe(16);
+      expect(timer.remainingTicks).toBe(16);
+
+      // Step virtual clock by 6 ticks
+      coordinator.stepTicks(6);
+      timer = coordinator.getTimerState();
+      expect(timer.remainingTicks).toBe(10); // 16 - 6 = 10
+      expect(coordinator.getTelemetry().timerState.remainingTicks).toBe(10);
+
+      // Complete transmission
+      coordinator.runToCompletion(100);
+      expect(coordinator.isComplete()).toBe(true);
+      expect(coordinator.getTimerState().active).toBe(false);
+    });
+
+    it('exposes non-ARQ status in Profile B CSMA/CD shared bus without fictitious timer', () => {
+      coordinator.reset({
+        profile: ProfileType.PROFILE_B,
+      });
+
+      const timer = coordinator.getTimerState();
+      expect(timer.active).toBe(false);
+      expect(timer.protocol).toBe('CSMA_CD');
+      expect(timer.status).toBe('NOT_APPLICABLE');
+      expect(timer.message).toContain('CSMA/CD');
+    });
+
+    it('renders live ARQ Retransmission Countdown in TransmissionLabView component', () => {
+      const html = renderToString(React.createElement(TransmissionLabView));
+      expect(html).toContain('ARQ Retransmission Countdown');
+      expect(html).toContain('No active timeout timer');
+    });
   });
 });

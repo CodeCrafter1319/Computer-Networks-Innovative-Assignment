@@ -52,6 +52,13 @@ export class GoBackNARQ {
     this.nextSeq = 0;    // Sn: next sequence number to send
     this.buffer = new Map(); // seq -> { frame, sentTick }
     this.timerEventId = null;
+    this.timerDeadline = null;
+    this.timerDuration = this.timeoutDuration;
+    this.timerBase = null;
+    this.timerFrameId = null;
+    this.timerAttempt = 1;
+    this.timerStatus = 'IDLE';
+    this.lastTimerEvent = null;
 
     // Receiver State
     this.expectedSeq = 0; // Rn: next expected sequence number
@@ -146,7 +153,28 @@ export class GoBackNARQ {
    */
   _startTimer() {
     this._stopTimer();
+    const currentTick = this.engine.getCurrentTick();
     const currentBase = this.base;
+    const entry = this.buffer.get(currentBase);
+    const frameId = entry ? entry.frame.id : null;
+    const attempt = entry ? (entry.frame.attempt || 1) : 1;
+
+    this.timerDeadline = currentTick + this.timeoutDuration;
+    this.timerDuration = this.timeoutDuration;
+    this.timerBase = currentBase;
+    this.timerFrameId = frameId;
+    this.timerAttempt = attempt;
+    this.timerStatus = 'WAITING_FOR_ACK';
+    this.lastTimerEvent = {
+      type: 'STARTED',
+      tick: currentTick,
+      base: currentBase,
+      frameId,
+      attempt,
+      deadlineTick: this.timerDeadline,
+      message: `Timer started for oldest frame Sf = #${currentBase} (attempt #${attempt}). Deadline: t=${this.timerDeadline}`,
+    };
+
     this.timerEventId = this.engine.scheduleRelative(
       this.timeoutDuration,
       () => {
@@ -167,6 +195,17 @@ export class GoBackNARQ {
     if (this.timerEventId !== null) {
       this.engine.getQueue().cancel(this.timerEventId);
       this.timerEventId = null;
+      const currentTick = this.engine.getCurrentTick();
+      if (this.timerStatus === 'WAITING_FOR_ACK') {
+        this.timerStatus = 'ACK_RECEIVED';
+        this.lastTimerEvent = {
+          type: 'ACK_RECEIVED',
+          tick: currentTick,
+          base: this.timerBase,
+          message: `ACK received at t=${currentTick}. Window advanced, timer cancelled.`,
+        };
+      }
+      this.timerDeadline = null;
     }
   }
 
@@ -177,11 +216,22 @@ export class GoBackNARQ {
    */
   _handleTimeout() {
     this.timerEventId = null;
+    this.timerDeadline = null;
     const currentTick = this.engine.getCurrentTick();
 
     if (this.buffer.size === 0 || this.base === this.nextSeq) {
+      this.timerStatus = 'IDLE';
       return;
     }
+
+    this.timerStatus = 'TIMEOUT';
+    this.lastTimerEvent = {
+      type: 'TIMEOUT',
+      tick: currentTick,
+      base: this.base,
+      outstanding: this.getOutstandingCount(),
+      message: `TIMEOUT at t=${currentTick} for base frame #${this.base}! Retransmitting all ${this.getOutstandingCount()} frames in window.`,
+    };
 
     this.stats.timeouts++;
 
@@ -368,6 +418,51 @@ export class GoBackNARQ {
   }
 
   /**
+   * Get immutable snapshot of current retransmission timer countdown state.
+   * 
+   * @returns {Object}
+   */
+  getTimerState() {
+    const currentTick = this.engine.getCurrentTick();
+    const hasActiveTimer = this.timerEventId !== null && this.timerDeadline !== null;
+    const remainingTicks = hasActiveTimer ? Math.max(0, this.timerDeadline - currentTick) : 0;
+    const curBase = hasActiveTimer ? this.timerBase : (this.timerBase ?? this.base);
+    const entry = this.buffer.get(curBase);
+    const frameId = entry ? entry.frame.id : this.timerFrameId;
+    const attempt = entry ? (entry.frame.attempt || 1) : this.timerAttempt;
+
+    return {
+      protocol: 'GBN',
+      active: hasActiveTimer,
+      status: hasActiveTimer ? 'WAITING_FOR_ACK' : this.timerStatus,
+      frameSeq: curBase,
+      base: this.base,
+      frameId,
+      attempt,
+      duration: this.timeoutDuration,
+      deadlineTick: this.timerDeadline,
+      remainingTicks,
+      currentTick,
+      outstandingCount: this.getOutstandingCount(),
+      lastEvent: this.lastTimerEvent,
+      timers: hasActiveTimer
+        ? [
+            {
+              frameSeq: curBase,
+              base: this.base,
+              frameId,
+              attempt,
+              duration: this.timeoutDuration,
+              deadlineTick: this.timerDeadline,
+              remainingTicks,
+              status: 'WAITING_FOR_ACK',
+            },
+          ]
+        : [],
+    };
+  }
+
+  /**
    * Get an immutable snapshot of current protocol state.
    * 
    * @returns {Object}
@@ -406,6 +501,7 @@ export class GoBackNARQ {
         deliveredPayloads: [...this.deliveredPayloads],
       },
       stats: { ...this.stats },
+      timerState: this.getTimerState(),
     };
   }
 }

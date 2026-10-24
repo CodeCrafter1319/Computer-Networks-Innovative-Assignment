@@ -26,6 +26,7 @@ import {
   isWithinWindow,
   seqDistance,
 } from '../../core/flow-control/sequenceMath.js';
+import ArqTimeoutPanel from '../components/ArqTimeoutPanel.jsx';
 
 export default function FlowControlView() {
   // Protocol Selection: SW | GBN | SR
@@ -865,6 +866,14 @@ export default function FlowControlView() {
         </div>
       </div>
 
+      {/* Live ARQ Retransmission Timeout Countdown */}
+      <ArqTimeoutPanel
+        timerState={snapshot.timerState}
+        timeoutDuration={timeoutDuration}
+        protocol={protocol}
+        currentTick={virtualTick}
+      />
+
       {/* 5. Dominant Visual Animation Canvas: Dual Station Nodes & Multi-Lane Duplex Medium */}
       <div className="channel-visualizer">
         {/* Node Station Badges */}
@@ -881,7 +890,7 @@ export default function FlowControlView() {
                 )}
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Timer: {protocolState?.sender?.hasTimer ? '⏱️ Active' : 'Idle'} | Timeout: {timeoutDuration} ticks
+                Timer: {snapshot.timerState?.active ? `⏱️ Active (${snapshot.timerState.remainingTicks}t remaining)` : 'Idle'} | Timeout: {timeoutDuration} ticks
               </div>
             </div>
           </div>
